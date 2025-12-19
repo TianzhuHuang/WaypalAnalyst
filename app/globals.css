@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Ensure full viewport height */
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: white;
+}
+
+#__next {
+  height: 100%;
+  background-color: white;
+}
+
+/* React DatePicker styles */
+.react-datepicker {
+  font-family: inherit;
+}
+
+.react-datepicker__header {
+  background-color: white;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.react-datepicker__day--selected,
+.react-datepicker__day--in-range,
+.react-datepicker__day--in-selecting-range {
+  background-color: #3b82f6;
+  color: white;
+}
+
+.react-datepicker__day--range-start,
+.react-datepicker__day--range-end {
+  background-color: #3b82f6;
+  color: white;
+}
+
+.react-datepicker__day:hover {
+  background-color: #93c5fd;
+  color: white;
+}
