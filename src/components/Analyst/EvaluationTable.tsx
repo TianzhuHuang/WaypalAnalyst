@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { MapPin, Calendar, CheckCircle2, XCircle, Info, ExternalLink, Star, CreditCard, Utensils, Bed, ChevronDown, ShieldCheck, X, Gift, Sparkles } from 'lucide-react';
+import { MapPin, Calendar, CheckCircle2, XCircle, Info, ExternalLink, Star, CreditCard, Utensils, Bed, ChevronDown, ShieldCheck, X, Gift, Sparkles, Coffee, DollarSign, TrendingUp, Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface Promotion {
@@ -140,18 +140,18 @@ function DetailModal({
             onClick={onClose}
           >
             <div
-              className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 relative"
+              className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[80vh] overflow-y-auto p-6 relative"
               onClick={(e) => e.stopPropagation()}
             >
               <button
                 onClick={onClose}
-                className="absolute top-4 right-4 p-1 rounded-lg hover:bg-gray-100 transition-colors"
+                className="absolute top-4 right-4 p-1 rounded-lg hover:bg-gray-100 transition-colors z-10"
               >
                 <X className="w-5 h-5 text-gray-500" />
               </button>
               <h3 className="text-xl font-bold text-gray-900 mb-3 pr-8">{title}</h3>
               {description && (
-                <p className="text-sm text-gray-700 mb-4 leading-relaxed">{description}</p>
+                <p className="text-sm text-gray-700 mb-4 leading-relaxed whitespace-pre-wrap break-words">{description}</p>
               )}
               {expiry && (
                 <div className="pt-4 border-t border-gray-200">
@@ -266,22 +266,22 @@ export default function AnalystComparisonCard({
 
       {/* Comparison Table - Desktop */}
       <div className="hidden md:block overflow-x-auto">
-        <table className="w-full border-collapse">
+        <table className="w-full border-collapse bg-white">
           <thead>
-            <tr className="border-b border-gray-200">
-              <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[200px]">
+            <tr className="border-b-2 border-gray-200 bg-gray-50/50">
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider align-middle" style={{ width: '180px' }}>
                 {isZh ? '预订平台 / 价格' : 'PLATFORM / PRICE'}
               </th>
-              <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[180px]">
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider align-middle" style={{ width: '180px' }}>
                 {isZh ? '优惠政策' : 'PROMOTIONS'}
               </th>
-              <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[220px]">
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider align-middle" style={{ width: '240px' }}>
                 {isZh ? '专属礼遇' : 'PERKS'}
               </th>
-              <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[200px]">
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider align-middle" style={{ width: '150px' }}>
                 {isZh ? '政策' : 'POLICY'}
               </th>
-              <th className="px-6 py-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-[150px]">
+              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider align-middle" style={{ width: '120px' }}>
                 {isZh ? '操作' : 'ACTION'}
               </th>
             </tr>
@@ -295,17 +295,19 @@ export default function AnalystComparisonCard({
                 ? (isZh ? '含早' : 'Breakfast Included')
                 : (isZh ? '无早' : 'No Breakfast');
               
+              const isLuxTrip = row.isBest || row.platform?.toLowerCase() === 'luxtrip';
+              
               return (
                 <tr
                   key={index}
-                  className={`border-b border-gray-200 ${
-                    row.isBest || row.platform?.toLowerCase() === 'luxtrip'
-                      ? 'bg-green-50/30 border-l-4 border-l-green-500'
-                      : 'bg-white'
+                  className={`border-b border-gray-100 transition-colors ${
+                    isLuxTrip
+                      ? 'bg-emerald-50/20 border-l-4 border-l-[#00CD52] hover:bg-emerald-50/30'
+                      : 'bg-white hover:bg-gray-50/50'
                   }`}
                 >
                   {/* Platform & Price Column */}
-                  <td className="px-6 py-5">
+                  <td className="px-4 py-4 align-middle">
                     <div className="flex flex-col">
                       {/* Platform Name */}
                       <div className="flex items-center gap-2 mb-2">
@@ -317,115 +319,147 @@ export default function AnalystComparisonCard({
                           />
                         )}
                         <span className={`text-sm font-medium ${
-                          row.isBest || row.platform?.toLowerCase() === 'luxtrip' ? 'text-green-600' : 'text-gray-700'
+                          isLuxTrip ? 'text-[#00CD52]' : 'text-gray-700'
                         }`}>
                           {row.platform}
                         </span>
-                        {(row.isBest || row.platform?.toLowerCase() === 'luxtrip') && (
-                          <span className="px-2 py-0.5 bg-green-500 text-white text-xs font-medium rounded">
+                        {isLuxTrip && (
+                          <span className="px-2 py-0.5 bg-[#00CD52] text-white text-[10px] font-bold rounded whitespace-nowrap min-w-fit">
                             {isZh ? '最佳价值' : 'BEST VALUE'}
                           </span>
                         )}
                       </div>
                       {/* Price */}
-                      <span className={`font-bold text-2xl leading-tight ${
-                        row.isBest || row.platform?.toLowerCase() === 'luxtrip' ? 'text-green-600' : 'text-gray-900'
+                      <span className={`font-bold text-lg leading-tight ${
+                        isLuxTrip ? 'text-[#00CD52]' : 'text-gray-900'
                       }`}>
                         {row.totalPrice}
                       </span>
-                      <span className="text-sm text-gray-500 mt-1">
+                      <span className="text-xs text-gray-500 mt-0.5">
                         {row.nightlyPrice}
                       </span>
                     </div>
                   </td>
 
                   {/* Promotions Column */}
-                  <td className="px-6 py-5">
-                    <div className="space-y-2">
+                  <td className="px-4 py-4 align-middle">
+                    <div className="flex flex-col gap-1">
                       {row.promotions && row.promotions.length > 0 ? (
                         row.promotions.map((promo, promoIndex) => (
                           <button
                             key={promoIndex}
                             onClick={() => openModal(promo.name, promo.description, promo.available_until)}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-orange-50 hover:bg-orange-100 border border-orange-200 text-orange-700 text-xs font-medium rounded-lg transition-colors cursor-pointer"
+                            className="inline-flex items-center gap-1.5 px-2 py-1 bg-transparent border border-amber-300/60 text-amber-700 text-xs font-medium rounded transition-colors cursor-pointer hover:bg-amber-50/50 hover:border-amber-400 text-left w-fit"
                           >
-                            <Gift className="w-3 h-3" />
-                            <span>{promo.name}</span>
+                            <Zap className="w-3 h-3 text-amber-600 flex-shrink-0" />
+                            <span className="whitespace-nowrap">{promo.name}</span>
                           </button>
                         ))
                       ) : row.platform?.toLowerCase() === 'official' || row.platform?.toLowerCase().includes('官网') ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gray-50 border border-gray-200 text-gray-600 text-xs font-medium rounded-lg">
-                          <Star className="w-3 h-3" />
+                        <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-transparent border border-gray-200 text-gray-500 text-xs font-normal rounded w-fit">
+                          <Info className="w-3 h-3 text-gray-400 flex-shrink-0" />
                           <span>{isZh ? 'SNP / 会员积分政策' : 'SNP / Points Policy'}</span>
                         </span>
                       ) : (
-                        <span className="text-xs text-gray-400">{isZh ? '无' : 'None'}</span>
+                        <span className="text-xs text-gray-400">{isZh ? '—' : '—'}</span>
                       )}
                     </div>
                   </td>
 
                   {/* Perks Column */}
-                  <td className="px-6 py-5">
-                    <div className="space-y-2">
-                      {/* Structured Perks - Green badges */}
+                  <td className="px-4 py-4 align-middle">
+                    <div className="flex flex-col gap-1.5">
+                      {/* Structured Perks - Clean green style with icons */}
                       {row.structuredPerks && row.structuredPerks.length > 0 ? (
-                        <div className="space-y-1.5">
-                          {row.structuredPerks.map((perk, perkIndex) => (
+                        row.structuredPerks.map((perk, perkIndex) => {
+                          // Determine icon based on perk label
+                          const getPerkIcon = (label: string) => {
+                            const lowerLabel = label.toLowerCase();
+                            if (lowerLabel.includes('breakfast') || lowerLabel.includes('早') || lowerLabel.includes('早餐')) {
+                              return <Coffee className="w-3.5 h-3.5 text-[#00CD52] flex-shrink-0" />;
+                            }
+                            if (lowerLabel.includes('credit') || lowerLabel.includes('美金') || lowerLabel.includes('dollar') || lowerLabel.includes('$')) {
+                              return <DollarSign className="w-3.5 h-3.5 text-[#00CD52] flex-shrink-0" />;
+                            }
+                            if (lowerLabel.includes('upgrade') || lowerLabel.includes('升房') || lowerLabel.includes('room')) {
+                              return <TrendingUp className="w-3.5 h-3.5 text-[#00CD52] flex-shrink-0" />;
+                            }
+                            return <Sparkles className="w-3.5 h-3.5 text-[#00CD52] flex-shrink-0" />;
+                          };
+                          
+                          return (
                             <button
                               key={perkIndex}
                               onClick={() => openModal(perk.label, perk.detail)}
-                              className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-xs font-medium rounded-lg transition-colors cursor-pointer w-full text-left"
+                              className="inline-flex items-center gap-1.5 px-2 py-1 bg-transparent text-[#00CD52] text-xs font-medium rounded transition-colors cursor-pointer hover:bg-emerald-50/30 text-left w-fit group"
                             >
-                              <Sparkles className="w-3 h-3 flex-shrink-0" />
-                              <span className="truncate">{perk.label}</span>
+                              <div className="w-1.5 h-1.5 rounded-full bg-[#00CD52] flex-shrink-0 group-hover:scale-125 transition-transform" />
+                              {getPerkIcon(perk.label)}
+                              <span className="whitespace-nowrap">{perk.label}</span>
                             </button>
-                          ))}
-                        </div>
+                          );
+                        })
                       ) : row.perks.perksSummary ? (
-                        <span className="text-xs text-emerald-700">{row.perks.perksSummary}</span>
+                        <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-transparent text-[#00CD52] text-xs font-medium rounded w-fit">
+                          <div className="w-1.5 h-1.5 rounded-full bg-[#00CD52] flex-shrink-0" />
+                          <Sparkles className="w-3.5 h-3.5 text-[#00CD52] flex-shrink-0" />
+                          <span>{row.perks.perksSummary}</span>
+                        </div>
                       ) : (
                         <>
-                          {/* Breakfast with fork/spoon icon */}
-                          <div className="flex items-center gap-2">
-                            <ForkSpoonIconSimple className="w-4 h-4" />
-                            <span className="text-sm text-gray-900 font-medium">
-                              {breakfastText}
-                            </span>
+                          {/* Breakfast with coffee icon */}
+                          <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-transparent text-[#00CD52] text-xs font-medium rounded w-fit">
+                            <div className="w-1.5 h-1.5 rounded-full bg-[#00CD52] flex-shrink-0" />
+                            <Coffee className="w-3.5 h-3.5 text-[#00CD52] flex-shrink-0" />
+                            <span>{breakfastText}</span>
                           </div>
                           
                           {/* Points with star icon */}
-                          <div className="flex items-center gap-2">
-                            {row.perks.pointsAccumulatable ? (
-                              <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" strokeWidth={1.5} />
-                            ) : (
-                              <Star className="w-4 h-4 text-gray-300" fill="none" strokeWidth={1.5} />
-                            )}
-                            <span className="text-sm text-gray-900">
-                              {row.perks.pointsAccumulatable
-                                ? (isZh ? '可累积积分' : 'Earns Points')
-                                : (isZh ? '不可累积积分' : 'No Points')}
-                            </span>
-                          </div>
-                          
-                          {/* VIP Benefits - Blue bullets */}
-                          {row.perks.vipBenefits && row.perks.vipBenefits.length > 0 && (
-                            <div className="space-y-1.5 pt-1">
-                              {row.perks.vipBenefits.map((benefit, benefitIndex) => (
-                                <div key={benefitIndex} className="flex items-center gap-2">
-                                  <div className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
-                                  <span className="text-xs text-green-600">{benefit}</span>
-                                </div>
-                              ))}
+                          {row.perks.pointsAccumulatable && (
+                            <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-transparent text-[#00CD52] text-xs font-medium rounded w-fit">
+                              <div className="w-1.5 h-1.5 rounded-full bg-[#00CD52] flex-shrink-0" />
+                              <Star className="w-3.5 h-3.5 fill-[#00CD52] text-[#00CD52] flex-shrink-0" strokeWidth={1.5} />
+                              <span>{isZh ? '可累积积分' : 'Earns Points'}</span>
                             </div>
+                          )}
+                          
+                          {/* VIP Benefits - Clean green style */}
+                          {row.perks.vipBenefits && row.perks.vipBenefits.length > 0 && (
+                            <>
+                              {row.perks.vipBenefits.map((benefit, benefitIndex) => {
+                                const getBenefitIcon = (benefitText: string) => {
+                                  const lower = benefitText.toLowerCase();
+                                  if (lower.includes('credit') || lower.includes('$') || lower.includes('dollar')) {
+                                    return <DollarSign className="w-3.5 h-3.5 text-[#00CD52] flex-shrink-0" />;
+                                  }
+                                  if (lower.includes('upgrade') || lower.includes('room')) {
+                                    return <TrendingUp className="w-3.5 h-3.5 text-[#00CD52] flex-shrink-0" />;
+                                  }
+                                  return <Sparkles className="w-3.5 h-3.5 text-[#00CD52] flex-shrink-0" />;
+                                };
+                                
+                                return (
+                                  <div
+                                    key={benefitIndex}
+                                    className="inline-flex items-center gap-1.5 px-2 py-1 bg-transparent text-[#00CD52] text-xs font-medium rounded w-fit"
+                                  >
+                                    <div className="w-1.5 h-1.5 rounded-full bg-[#00CD52] flex-shrink-0" />
+                                    {getBenefitIcon(benefit)}
+                                    <span className="whitespace-nowrap">{benefit}</span>
+                                  </div>
+                                );
+                              })}
+                            </>
                           )}
                         </>
                       )}
                       
-                      {/* Valued at tag */}
+                      {/* Valued at tag - Subtle badge */}
                       {row.perksValue && (
-                        <div className="mt-3">
-                          <span className="inline-block px-3 py-1.5 bg-green-500 text-white text-xs font-medium rounded">
-                            {isZh ? '价值约' : 'Valued at'} {row.perksValue}
+                        <div className="mt-1.5">
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#00CD52]/10 text-[#00CD52] text-[10px] font-semibold rounded border border-[#00CD52]/20">
+                            <DollarSign className="w-3 h-3 flex-shrink-0" />
+                            <span>{isZh ? '价值约' : 'Valued at'} {row.perksValue}</span>
                           </span>
                         </div>
                       )}
@@ -433,21 +467,17 @@ export default function AnalystComparisonCard({
                   </td>
 
                   {/* Policy Column */}
-                  <td className="px-6 py-5">
+                  <td className="px-4 py-4 align-middle">
                     <div className="flex flex-col gap-2">
                       {/* Cancellation Policy with icon */}
                       <div className="flex items-center gap-2">
                         {cancellationType === 'free' ? (
-                          <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
-                          </div>
+                          <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
                         ) : (
-                          <div className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
-                            <XCircle className="w-3.5 h-3.5 text-red-600" />
-                          </div>
+                          <XCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
                         )}
                         <div className="flex flex-col">
-                          <span className={`text-sm font-medium ${
+                          <span className={`text-xs font-medium whitespace-nowrap ${
                             cancellationType === 'free'
                               ? 'text-green-600'
                               : cancellationType === 'non_refundable'
@@ -461,7 +491,7 @@ export default function AnalystComparisonCard({
                               : (isZh ? '有条件取消' : 'Conditional')}
                           </span>
                           {row.policy.cancellationDetails && (
-                            <span className="text-xs text-gray-500 mt-0.5">
+                            <span className="text-[10px] text-gray-500 mt-0.5 whitespace-nowrap">
                               {row.policy.cancellationDetails}
                             </span>
                           )}
@@ -470,8 +500,8 @@ export default function AnalystComparisonCard({
                       
                       {/* Payment Method with card icon */}
                       <div className="flex items-center gap-2">
-                        <CreditCard className="w-4 h-4 text-gray-600 flex-shrink-0" />
-                        <span className="text-sm text-gray-700">
+                        <CreditCard className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
+                        <span className="text-xs text-gray-600">
                           {row.policy.paymentPolicyText ||
                             (row.policy.paymentPolicy === 'online_payment'
                               ? (isZh ? '在线预付' : 'Prepay Online')
@@ -486,19 +516,21 @@ export default function AnalystComparisonCard({
                   </td>
 
                   {/* Action Column - Booking Link */}
-                  <td className="px-6 py-5">
+                  <td className="px-4 py-4 align-middle">
                     {row.websiteUrl ? (
                       <a
                         href={row.websiteUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-green-600 hover:text-green-700 hover:underline inline-flex items-center gap-1 text-sm"
+                        className={`hover:underline inline-flex items-center gap-1 text-xs font-medium transition-colors whitespace-nowrap ${
+                          isLuxTrip ? 'text-[#00CD52] hover:text-[#00CD52]/80' : 'text-gray-600 hover:text-gray-800'
+                        }`}
                       >
                         <span>{isZh ? '访问网站' : 'Visit Site'}</span>
-                        <ExternalLink className="w-3.5 h-3.5" />
+                        <ExternalLink className="w-3 h-3 flex-shrink-0" />
                       </a>
                     ) : (
-                      <span className="text-sm text-gray-400">{isZh ? '暂无链接' : 'No Link'}</span>
+                      <span className="text-xs text-gray-400">{isZh ? '—' : '—'}</span>
                     )}
                   </td>
                 </tr>
@@ -518,11 +550,15 @@ export default function AnalystComparisonCard({
             ? (isZh ? '含早' : 'Breakfast Included')
             : (isZh ? '无早' : 'No Breakfast');
           
+          const isLuxTrip = row.isBest || row.platform?.toLowerCase() === 'luxtrip';
+          
           return (
             <div
               key={index}
-              className={`bg-white border-2 rounded-xl p-4 ${
-                row.isBest || row.platform?.toLowerCase() === 'luxtrip' ? 'border-green-500 shadow-lg' : 'border-gray-200'
+              className={`bg-white border rounded-xl p-4 transition-all ${
+                isLuxTrip 
+                  ? 'border-l-4 border-l-[#00CD52] bg-emerald-50/20 shadow-sm' 
+                  : 'border-gray-200'
               }`}
             >
               {/* Card Header - Platform & Price */}
@@ -536,119 +572,169 @@ export default function AnalystComparisonCard({
                         className="w-5 h-5 object-contain"
                       />
                     )}
-                    <span className={`text-base font-semibold ${
-                      row.isBest || row.platform?.toLowerCase() === 'luxtrip' ? 'text-green-600' : 'text-gray-700'
+                    <span className={`text-base font-medium ${
+                      isLuxTrip ? 'text-[#00CD52]' : 'text-gray-700'
                     }`}>
                       {row.platform}
                     </span>
-                    {(row.isBest || row.platform?.toLowerCase() === 'luxtrip') && (
-                      <span className="px-2 py-0.5 bg-green-500 text-white text-xs font-medium rounded">
+                    {isLuxTrip && (
+                      <span className="px-2 py-0.5 bg-[#00CD52] text-white text-[10px] font-bold rounded whitespace-nowrap min-w-fit">
                         {isZh ? '最佳价值' : 'BEST VALUE'}
                       </span>
                     )}
                   </div>
                   <div className="flex flex-col">
-                    <span className={`font-bold text-2xl leading-tight ${
-                      row.isBest || row.platform?.toLowerCase() === 'luxtrip' ? 'text-green-600' : 'text-gray-900'
+                    <span className={`font-bold text-lg leading-tight ${
+                      isLuxTrip ? 'text-[#00CD52]' : 'text-gray-900'
                     }`}>
                       {row.totalPrice}
                     </span>
-                    <span className="text-sm text-gray-500 mt-1">
+                    <span className="text-xs text-gray-500 mt-0.5">
                       {row.nightlyPrice}
                     </span>
                   </div>
                 </div>
               </div>
 
-              {/* Promotions Section */}
-              {row.promotions && row.promotions.length > 0 && (
+              {/* Member Deals Section (Promotions) */}
+              {(row.promotions && row.promotions.length > 0) || (row.platform?.toLowerCase() === 'official' || row.platform?.toLowerCase().includes('官网')) ? (
                 <div className="mb-4 pb-4 border-b border-gray-200">
-                  <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
-                    {isZh ? '优惠政策' : 'PROMOTIONS'}
+                  <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">
+                    {isZh ? '会员优惠' : 'MEMBER DEALS'}
                   </h4>
-                  <div className="space-y-2">
-                    {row.promotions.map((promo, promoIndex) => (
-                      <button
-                        key={promoIndex}
-                        onClick={() => openModal(promo.name, promo.description, promo.available_until)}
-                        className="w-full inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-orange-50 hover:bg-orange-100 border border-orange-200 text-orange-700 text-xs font-medium rounded-lg transition-colors cursor-pointer text-left"
-                      >
-                        <Gift className="w-3 h-3 flex-shrink-0" />
-                        <span className="flex-1">{promo.name}</span>
-                      </button>
-                    ))}
+                  <div className="flex flex-col gap-1">
+                    {row.promotions && row.promotions.length > 0 ? (
+                      row.promotions.map((promo, promoIndex) => (
+                        <button
+                          key={promoIndex}
+                          onClick={() => openModal(promo.name, promo.description, promo.available_until)}
+                          className="inline-flex items-center gap-1.5 px-2 py-1 bg-transparent border border-amber-300/60 text-amber-700 text-xs font-medium rounded transition-colors cursor-pointer hover:bg-amber-50/50 hover:border-amber-400 text-left w-fit"
+                        >
+                          <Zap className="w-3 h-3 text-amber-600 flex-shrink-0" />
+                          <span>{promo.name}</span>
+                        </button>
+                      ))
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-2 py-1 bg-transparent border border-gray-200 text-gray-500 text-xs font-normal rounded w-fit">
+                        <Info className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                        <span>{isZh ? 'SNP / 会员积分政策' : 'SNP / Points Policy'}</span>
+                      </span>
+                    )}
                   </div>
                 </div>
-              )}
+              ) : null}
 
-              {/* Perks Section */}
+              {/* Exclusive Perks Section */}
               <div className="mb-4 pb-4 border-b border-gray-200">
-                <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
-                  {isZh ? '专属礼遇' : 'PERKS'}
+                <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">
+                  {isZh ? '专属礼遇' : 'EXCLUSIVE PERKS'}
                 </h4>
-                <div className="space-y-2">
-                  {/* Structured Perks - Green badges */}
+                <div className="flex flex-col gap-1.5">
+                  {/* Structured Perks - Clean green style with icons */}
                   {row.structuredPerks && row.structuredPerks.length > 0 ? (
-                    <div className="space-y-1.5">
-                      {row.structuredPerks.map((perk, perkIndex) => (
+                    row.structuredPerks.map((perk, perkIndex) => {
+                      const getPerkIcon = (label: string) => {
+                        const lowerLabel = label.toLowerCase();
+                        if (lowerLabel.includes('breakfast') || lowerLabel.includes('早') || lowerLabel.includes('早餐')) {
+                          return <Coffee className="w-3.5 h-3.5 text-[#00CD52] flex-shrink-0" />;
+                        }
+                        if (lowerLabel.includes('credit') || lowerLabel.includes('美金') || lowerLabel.includes('dollar') || lowerLabel.includes('$')) {
+                          return <DollarSign className="w-3.5 h-3.5 text-[#00CD52] flex-shrink-0" />;
+                        }
+                        if (lowerLabel.includes('upgrade') || lowerLabel.includes('升房') || lowerLabel.includes('room')) {
+                          return <TrendingUp className="w-3.5 h-3.5 text-[#00CD52] flex-shrink-0" />;
+                        }
+                        return <Sparkles className="w-3.5 h-3.5 text-[#00CD52] flex-shrink-0" />;
+                      };
+                      
+                      return (
                         <button
                           key={perkIndex}
                           onClick={() => openModal(perk.label, perk.detail)}
-                          className="w-full inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-xs font-medium rounded-lg transition-colors cursor-pointer text-left"
+                          className="inline-flex items-center gap-1.5 px-2 py-1 bg-transparent text-[#00CD52] text-xs font-medium rounded transition-colors cursor-pointer hover:bg-emerald-50/30 text-left w-fit group"
                         >
-                          <Sparkles className="w-3 h-3 flex-shrink-0" />
-                          <span className="truncate">{perk.label}</span>
+                          <div className="w-1.5 h-1.5 rounded-full bg-[#00CD52] flex-shrink-0 group-hover:scale-125 transition-transform" />
+                          {getPerkIcon(perk.label)}
+                          <span>{perk.label}</span>
                         </button>
-                      ))}
-                    </div>
+                      );
+                    })
                   ) : row.perks.perksSummary ? (
-                    <span className="text-xs text-emerald-700">{row.perks.perksSummary}</span>
+                    <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-transparent text-[#00CD52] text-xs font-medium rounded w-fit">
+                      <div className="w-1.5 h-1.5 rounded-full bg-[#00CD52] flex-shrink-0" />
+                      <Sparkles className="w-3.5 h-3.5 text-[#00CD52] flex-shrink-0" />
+                      <span>{row.perks.perksSummary}</span>
+                    </div>
                   ) : (
                     <>
-                      <div className="flex items-center gap-2">
-                        <ForkSpoonIconSimple className="w-4 h-4" />
-                        <span className="text-sm text-gray-900 font-medium">
-                          {breakfastText}
-                        </span>
+                      {/* Breakfast with coffee icon */}
+                      <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-transparent text-[#00CD52] text-xs font-medium rounded w-fit">
+                        <div className="w-1.5 h-1.5 rounded-full bg-[#00CD52] flex-shrink-0" />
+                        <Coffee className="w-3.5 h-3.5 text-[#00CD52] flex-shrink-0" />
+                        <span>{breakfastText}</span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {row.perks.pointsAccumulatable ? (
-                          <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" strokeWidth={1.5} />
-                        ) : (
-                          <Star className="w-4 h-4 text-gray-300" fill="none" strokeWidth={1.5} />
-                        )}
-                        <span className="text-sm text-gray-900">
-                          {row.perks.pointsAccumulatable
-                            ? (isZh ? '可累积积分' : 'Earns Points')
-                            : (isZh ? '不可累积积分' : 'No Points')}
-                        </span>
-                      </div>
-                      {row.perks.vipBenefits && row.perks.vipBenefits.length > 0 && (
-                        <div className="space-y-1.5 pt-1">
-                          {row.perks.vipBenefits.map((benefit, benefitIndex) => (
-                            <div key={benefitIndex} className="flex items-center gap-2">
-                              <div className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
-                              <span className="text-xs text-green-600">{benefit}</span>
-                            </div>
-                          ))}
+                      
+                      {/* Points with star icon */}
+                      {row.perks.pointsAccumulatable && (
+                        <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-transparent text-[#00CD52] text-xs font-medium rounded w-fit">
+                          <div className="w-1.5 h-1.5 rounded-full bg-[#00CD52] flex-shrink-0" />
+                          <Star className="w-3.5 h-3.5 fill-[#00CD52] text-[#00CD52] flex-shrink-0" strokeWidth={1.5} />
+                          <span>{isZh ? '可累积积分' : 'Earns Points'}</span>
                         </div>
                       )}
+                      
+                      {/* VIP Benefits - Clean green style */}
+                      {row.perks.vipBenefits && row.perks.vipBenefits.length > 0 && (
+                        <>
+                          {row.perks.vipBenefits.map((benefit, benefitIndex) => {
+                            const getBenefitIcon = (benefitText: string) => {
+                              const lower = benefitText.toLowerCase();
+                              if (lower.includes('credit') || lower.includes('$') || lower.includes('dollar')) {
+                                return <DollarSign className="w-3.5 h-3.5 text-[#00CD52] flex-shrink-0" />;
+                              }
+                              if (lower.includes('upgrade') || lower.includes('room')) {
+                                return <TrendingUp className="w-3.5 h-3.5 text-[#00CD52] flex-shrink-0" />;
+                              }
+                              return <Sparkles className="w-3.5 h-3.5 text-[#00CD52] flex-shrink-0" />;
+                            };
+                            
+                            return (
+                              <div
+                                key={benefitIndex}
+                                className="inline-flex items-center gap-1.5 px-2 py-1 bg-transparent text-[#00CD52] text-xs font-medium rounded w-fit"
+                              >
+                                <div className="w-1.5 h-1.5 rounded-full bg-[#00CD52] flex-shrink-0" />
+                                {getBenefitIcon(benefit)}
+                                <span>{benefit}</span>
+                              </div>
+                            );
+                          })}
+                        </>
+                      )}
+                      
+                      {/* Negative Perks - Red style */}
                       {row.perks.negativePerks && row.perks.negativePerks.length > 0 && (
-                        <div className="space-y-1.5 pt-1">
+                        <>
                           {row.perks.negativePerks.map((perk, perkIndex) => (
-                            <div key={perkIndex} className="flex items-center gap-2">
-                              <div className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
-                              <span className="text-xs text-red-600">{perk}</span>
+                            <div
+                              key={perkIndex}
+                              className="inline-flex items-center gap-1.5 px-2 py-1 bg-transparent border border-red-200 text-red-600 text-xs font-medium rounded w-fit"
+                            >
+                              <XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+                              <span>{perk}</span>
                             </div>
                           ))}
-                        </div>
+                        </>
                       )}
                     </>
                   )}
+                  
+                  {/* Valued at tag - Subtle badge */}
                   {row.perksValue && (
-                    <div className="mt-3">
-                      <span className="inline-block px-3 py-1.5 bg-green-500 text-white text-xs font-medium rounded">
-                        {isZh ? '价值约' : 'Valued at'} {row.perksValue}
+                    <div className="mt-1.5">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-[#00CD52]/10 text-[#00CD52] text-[10px] font-semibold rounded border border-[#00CD52]/20">
+                        <DollarSign className="w-3 h-3 flex-shrink-0" />
+                        <span>{isZh ? '价值约' : 'Valued at'} {row.perksValue}</span>
                       </span>
                     </div>
                   )}
@@ -657,22 +743,18 @@ export default function AnalystComparisonCard({
 
               {/* Policy Section */}
               <div className="mb-4 pb-4 border-b border-gray-200">
-                <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
+                <h4 className="text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">
                   {isZh ? '政策' : 'POLICY'}
                 </h4>
-                <div className="space-y-3">
+                <div className="flex flex-col gap-2">
                   <div className="flex items-center gap-2">
                     {cancellationType === 'free' ? (
-                      <div className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-green-600" />
-                      </div>
+                      <CheckCircle2 className="w-4 h-4 text-green-600 flex-shrink-0" />
                     ) : (
-                      <div className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
-                        <XCircle className="w-3.5 h-3.5 text-red-600" />
-                      </div>
+                      <XCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
                     )}
                     <div className="flex flex-col">
-                      <span className={`text-sm font-medium ${
+                      <span className={`text-xs font-medium whitespace-nowrap ${
                         cancellationType === 'free'
                           ? 'text-green-600'
                           : cancellationType === 'non_refundable'
@@ -686,15 +768,15 @@ export default function AnalystComparisonCard({
                           : (isZh ? '有条件取消' : 'Conditional')}
                       </span>
                       {row.policy.cancellationDetails && (
-                        <span className="text-xs text-gray-500 mt-0.5">
+                        <span className="text-[10px] text-gray-500 mt-0.5 whitespace-nowrap">
                           {row.policy.cancellationDetails}
                         </span>
                       )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <CreditCard className="w-4 h-4 text-gray-600 flex-shrink-0" />
-                    <span className="text-sm text-gray-700">
+                    <CreditCard className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
+                    <span className="text-xs text-gray-600">
                       {row.policy.paymentPolicyText ||
                         (row.policy.paymentPolicy === 'online_payment'
                           ? (isZh ? '在线预付' : 'Prepay Online')
@@ -715,14 +797,18 @@ export default function AnalystComparisonCard({
                     href={row.websiteUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 bg-green-500 text-white text-sm font-medium rounded-lg hover:bg-green-600 transition-colors"
+                    className={`w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap ${
+                      isLuxTrip 
+                        ? 'bg-[#00CD52] text-white hover:bg-[#00CD52]/90' 
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
                   >
                     <span>{isZh ? '访问网站' : 'Visit Site'}</span>
-                    <ExternalLink className="w-4 h-4" />
+                    <ExternalLink className="w-3.5 h-3.5 flex-shrink-0" />
                   </a>
                 ) : (
-                  <div className="w-full px-4 py-3 bg-gray-100 text-gray-400 text-sm font-medium rounded-lg text-center">
-                    {isZh ? '暂无链接' : 'No Link'}
+                  <div className="w-full px-4 py-2.5 bg-gray-50 text-gray-400 text-xs font-medium rounded-lg text-center border border-gray-200">
+                    {isZh ? '—' : '—'}
                   </div>
                 )}
               </div>

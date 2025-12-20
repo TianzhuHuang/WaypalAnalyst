@@ -36,9 +36,11 @@ export default function Analyst({ locale = 'en', threadId, onThreadUpdate }: Ana
   const [showHistoryToast, setShowHistoryToast] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const [showSummaryPillEdit, setShowSummaryPillEdit] = useState(false);
-  const [isCheckHotelMode, setIsCheckHotelMode] = useState(true); // Default: checked
+  const [isExpertMode, setIsExpertMode] = useState(true); // Default: Expert Mode enabled
   const [isModeLocked, setIsModeLocked] = useState(false); // Lock mode after first message
   const [currentThreadId, setCurrentThreadId] = useState<string | null>(threadId || null);
+  const [hasReceivedEvaluation, setHasReceivedEvaluation] = useState(false); // Track if evaluation table was received
+  const [inputMode, setInputMode] = useState<'expert' | 'chat'>('expert'); // Current input mode
 
   // Reset state when threadId changes (new chat)
   useEffect(() => {
@@ -69,7 +71,7 @@ export default function Analyst({ locale = 'en', threadId, onThreadUpdate }: Ana
         preferences: 'None',
         isConfirmed: false,
       });
-      setIsCheckHotelMode(true); // Reset to default
+      setIsExpertMode(true); // Reset to default
     } else {
       // Load existing thread
       setCurrentThreadId(threadId);
@@ -179,6 +181,9 @@ export default function Analyst({ locale = 'en', threadId, onThreadUpdate }: Ana
     
     setIsAnimating(true);
     
+    // Ensure Expert Mode is enabled when loading history (since history items are from Expert searches)
+    setIsExpertMode(true);
+    
     setSearchContext(historyContext);
     
     setTimeout(() => {
@@ -193,7 +198,64 @@ export default function Analyst({ locale = 'en', threadId, onThreadUpdate }: Ana
     }, 300);
   };
   
+  // Reset evaluation state when starting new comparison
+  const handleNewComparison = () => {
+    setHasReceivedEvaluation(false);
+    setInputMode('expert');
+    setIsExpertMode(true);
+    setSearchContext((prev) => ({
+      ...prev,
+      hotelName: '',
+      isConfirmed: false,
+    }));
+    setInputValue('');
+    setMessages([]); // Clear messages for fresh start
+  };
+
   // Build natural language message from search context
+  // Smart intent detection: Check if input is a question or general query
+  const isQuestionOrGeneralQuery = (text: string): boolean => {
+    const lowerText = text.toLowerCase();
+    const questionKeywords = [
+      '?', '？', '有没有', '多远', '好不好', '怎么样', '如何', '什么', '为什么', '什么时候', '哪里', '可以', '是否',
+      'what', 'how', 'why', 'when', 'where', 'can', 'is', 'does', 'do', 'gym', 'pool', 'breakfast', 'wifi',
+      '健身房', '泳池', '早餐', '网络', '停车', 'parking', 'restaurant', '餐厅', 'spa', '设施'
+    ];
+    
+    // Check for question marks
+    if (text.includes('?') || text.includes('？')) {
+      return true;
+    }
+    
+    // Check for question keywords
+    for (const keyword of questionKeywords) {
+      if (lowerText.includes(keyword)) {
+        return true;
+      }
+    }
+    
+    // Check if it starts with question words
+    const questionStarters = ['what', 'how', 'why', 'when', 'where', 'can', 'is', 'does', 'do', '什么', '如何', '为什么', '什么时候', '哪里', '可以', '是否'];
+    for (const starter of questionStarters) {
+      if (lowerText.startsWith(starter)) {
+        return true;
+      }
+    }
+    
+    // If text is very short (likely a question) or contains hotel name + question pattern
+    if (text.length < 50 && (text.includes('酒店') || text.includes('hotel'))) {
+      // Check if it's a question about the hotel (e.g., "上海浦东文华东方酒店有没有健身房")
+      const questionPatterns = ['有没有', '多远', '好不好', '怎么样', 'how', 'does', 'is there', 'has'];
+      for (const pattern of questionPatterns) {
+        if (lowerText.includes(pattern)) {
+          return true;
+        }
+      }
+    }
+    
+    return false;
+  };
+
   const buildContextMessage = (context: SearchContext): string => {
     const parts: string[] = [];
     
@@ -286,36 +348,144 @@ export default function Analyst({ locale = 'en', threadId, onThreadUpdate }: Ana
     setIsLoading(true);
     try {
       const userId = getUserId();
-      console.log('[AIAnalyst] Sending context update to agent:', {
+      
+      // FORCE: If Expert Mode is checked, ALWAYS use /agent/compare (no conditions)
+      if (isExpertMode) {
+        // Use default values if not set
+        const compareContext: SearchContext = {
+          ...updatedContext,
+          hotelName: updatedContext.hotelName || '',
+          checkIn: updatedContext.checkIn || (() => {
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            tomorrow.setHours(0, 0, 0, 0);
+            return tomorrow;
+          })(),
+          checkOut: updatedContext.checkOut || (() => {
+            const dayAfter = new Date();
+            dayAfter.setDate(dayAfter.getDate() + 4);
+            dayAfter.setHours(0, 0, 0, 0);
+            return dayAfter;
+          })(),
+          rooms: updatedContext.rooms || 1,
+          adults: updatedContext.adults || 2,
+          children: updatedContext.children || 0,
+        };
+        
+        const compareParams = formatSearchContextForCompare(compareContext);
+        console.log('[AIAnalyst] ⚡ FORCED Compare Mode (Expert Mode ON) - Sending structured compare request:', {
+          params: compareParams,
+          userId,
+          isExpertMode,
+        });
+        
+        let timeoutId: NodeJS.Timeout | null = null;
+        const timeoutPromise = new Promise((_, reject) => {
+          timeoutId = setTimeout(() => {
+            reject(new Error(isZh ? '请求超时，请稍后重试' : 'Request timeout, please try again later'));
+          }, 300000); // 300 seconds (5 minutes)
+        });
+        
+        let response: any;
+        try {
+          response = await Promise.race([
+            compareHotel(compareParams, userId),
+            timeoutPromise,
+          ]) as any;
+          
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+          }
+        } catch (raceError) {
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+          }
+          throw raceError;
+        }
+        
+        console.log('[AIAnalyst] Received compare response:', {
+          status: response.status,
+          reply_type: response.reply_type,
+          has_reply: !!response.reply,
+          reply_length: response.reply?.length
+        });
+        
+        if (response.status === 'buffered' || !response.reply) {
+          const bufferedMessage: Message = {
+            id: Date.now().toString(),
+            role: 'assistant',
+            content: isZh ? '消息已收到，正在处理中...' : 'Message received, processing...',
+            timestamp: new Date(),
+          };
+          setMessages((prev) => [...prev, bufferedMessage]);
+          setIsLoading(false);
+          return;
+        }
+        
+        if (response.reply_type === 'evaluation') {
+          await handleEvaluationResponse(response);
+        } else {
+          let replyText = '';
+          try {
+            if (response.reply) {
+              try {
+                const parsed = JSON.parse(response.reply);
+                replyText = parsed.text || parsed.message || response.reply;
+              } catch {
+                replyText = response.reply;
+              }
+            } else {
+              replyText = isZh ? '未收到回复' : 'No reply received';
+            }
+          } catch {
+            replyText = response.reply || (isZh ? '未收到回复' : 'No reply received');
+          }
+          
+          const assistantMessage: Message = {
+            id: Date.now().toString(),
+            role: 'assistant',
+            content: replyText,
+            timestamp: new Date(),
+          };
+          
+          setMessages((prev) => [...prev, assistantMessage]);
+        }
+        return; // Exit early - Compare Mode handled
+      }
+      
+      // Only use /agent/message if Expert Mode is NOT checked
+      console.log('[AIAnalyst] General Chat Mode (Expert Mode OFF) - Sending context update to agent:', {
         message: contextMessage,
         context: updatedContext,
         userId,
+        isExpertMode,
       });
-      
-      let timeoutId: NodeJS.Timeout | null = null;
-      const timeoutPromise = new Promise((_, reject) => {
-        timeoutId = setTimeout(() => {
-          reject(new Error(isZh ? '请求超时，请稍后重试' : 'Request timeout, please try again later'));
-        }, 300000); // 300 seconds (5 minutes)
-      });
-      
-      let response: any;
-      try {
-        response = await Promise.race([
-          sendMessageToAgent(contextMessage, userId),
-          timeoutPromise,
-        ]) as any;
         
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-          timeoutId = null;
+        let timeoutId: NodeJS.Timeout | null = null;
+        const timeoutPromise = new Promise((_, reject) => {
+          timeoutId = setTimeout(() => {
+            reject(new Error(isZh ? '请求超时，请稍后重试' : 'Request timeout, please try again later'));
+          }, 300000); // 300 seconds (5 minutes)
+        });
+        
+        let response: any;
+        try {
+          response = await Promise.race([
+            sendMessageToAgent(contextMessage, userId),
+            timeoutPromise,
+          ]) as any;
+          
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+          }
+        } catch (raceError) {
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+          }
+          throw raceError;
         }
-      } catch (raceError) {
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-        }
-        throw raceError;
-      }
       
       console.log('[AIAnalyst] Received response:', response);
       
@@ -374,6 +544,10 @@ export default function Analyst({ locale = 'en', threadId, onThreadUpdate }: Ana
   const handleEvaluationResponse = async (response: any) => {
     try {
       const evaluationData = parseEvaluationReply(response.reply);
+      
+      // Mark that we've received an evaluation - switch to chat mode for follow-ups
+      setHasReceivedEvaluation(true);
+      setInputMode('chat'); // Auto-switch to chat mode after receiving evaluation
       
       // Debug: Log the evaluation data structure
       console.log('[AIAnalyst] Evaluation data:', evaluationData);
@@ -590,7 +764,131 @@ export default function Analyst({ locale = 'en', threadId, onThreadUpdate }: Ana
     setInputValue('');
 
     // Mode 1: Check Hotel Mode (Structured Search)
-    if (isCheckHotelMode) {
+    if (isExpertMode) {
+      // Smart Intent Detection: If input is a question/general query, use /agent/message even in Expert Mode
+      if (isQuestionOrGeneralQuery(messageText)) {
+        // User is asking a question - use /agent/message
+        const userMessage: Message = {
+          id: Date.now().toString(),
+          role: 'user',
+          content: messageText,
+          timestamp: new Date(),
+        };
+
+        setMessages((prev) => [...prev, userMessage]);
+        setIsLoading(true);
+        
+        // Lock mode after first message
+        if (!isModeLocked) {
+          setIsModeLocked(true);
+          // Generate thread ID if not exists
+          if (!currentThreadId) {
+            const newThreadId = `thread_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+            setCurrentThreadId(newThreadId);
+            if (onThreadUpdate) {
+              onThreadUpdate(newThreadId, searchContext.hotelName || 'General Query', true);
+            }
+          }
+        }
+
+        try {
+          const userId = getUserId();
+          console.log('[AIAnalyst] Expert Mode: Detected question, using /agent/message:', { message: messageText, userId });
+          
+          let timeoutId: NodeJS.Timeout | null = null;
+          const timeoutPromise = new Promise((_, reject) => {
+            timeoutId = setTimeout(() => {
+              reject(new Error(isZh ? '请求超时，请稍后重试' : 'Request timeout, please try again later'));
+            }, 300000); // 300 seconds (5 minutes)
+          });
+          
+          let response: any;
+          try {
+            response = await Promise.race([
+              sendMessageToAgent(messageText, userId),
+              timeoutPromise,
+            ]) as any;
+        
+            if (timeoutId) {
+              clearTimeout(timeoutId);
+              timeoutId = null;
+            }
+          } catch (raceError) {
+            if (timeoutId) {
+              clearTimeout(timeoutId);
+            }
+            throw raceError;
+          }
+          
+          console.log('[AIAnalyst] Received response:', { 
+            status: response.status, 
+            reply_type: response.reply_type,
+            has_reply: !!response.reply,
+            reply_length: response.reply?.length 
+          });
+          
+          if (response.status === 'buffered' || !response.reply) {
+            const bufferedMessage: Message = {
+              id: Date.now().toString(),
+              role: 'assistant',
+              content: isZh 
+                ? '消息已收到，正在处理中...'
+                : 'Message received, processing...',
+              timestamp: new Date(),
+            };
+            setMessages((prev) => [...prev, bufferedMessage]);
+            setIsLoading(false);
+            return;
+          }
+          
+          // Handle response based on reply_type
+          if (response.reply_type === 'evaluation') {
+            await handleEvaluationResponse(response);
+          } else {
+            let replyText = '';
+            try {
+              if (response.reply) {
+                try {
+                  const parsed = JSON.parse(response.reply);
+                  replyText = parsed.text || parsed.message || response.reply;
+                } catch {
+                  replyText = response.reply;
+                }
+              } else {
+                replyText = isZh ? '未收到回复' : 'No reply received';
+              }
+            } catch {
+              replyText = response.reply || (isZh ? '未收到回复' : 'No reply received');
+            }
+            
+            const assistantMessage: Message = {
+              id: Date.now().toString(),
+              role: 'assistant',
+              content: replyText,
+              timestamp: new Date(),
+            };
+            
+            setMessages((prev) => [...prev, assistantMessage]);
+          }
+        } catch (error: any) {
+          console.error('[AIAnalyst] Failed to get agent response:', error);
+          
+          const errorMessage: Message = {
+            id: Date.now().toString(),
+            role: 'assistant',
+            content: isZh 
+              ? `抱歉，处理您的请求时出现错误：${error.message || '未知错误'}`
+              : `Sorry, an error occurred while processing your request: ${error.message || 'Unknown error'}`,
+            timestamp: new Date(),
+          };
+          
+          setMessages((prev) => [...prev, errorMessage]);
+        } finally {
+          setIsLoading(false);
+        }
+        return; // End of question handling in Expert Mode
+      }
+      
       // If context is not confirmed, treat input as hotel name
       if (!searchContext.isConfirmed) {
       setDefaultDates();
@@ -635,127 +933,280 @@ export default function Analyst({ locale = 'en', threadId, onThreadUpdate }: Ana
       return;
       }
 
-      // Context is confirmed, use structured compare API
+      // Context is confirmed - check if user is asking a follow-up question or searching for a new hotel
+      // If the input looks like a question (contains ?, or is a short query), treat it as a follow-up
+      // Otherwise, treat it as a new hotel search
+      const isFollowUpQuestion = messageText.includes('?') || 
+                                 messageText.length < 50 || 
+                                 messageText.toLowerCase().startsWith('what') ||
+                                 messageText.toLowerCase().startsWith('how') ||
+                                 messageText.toLowerCase().startsWith('why') ||
+                                 messageText.toLowerCase().startsWith('when') ||
+                                 messageText.toLowerCase().startsWith('where') ||
+                                 messageText.toLowerCase().startsWith('can') ||
+                                 messageText.toLowerCase().startsWith('is') ||
+                                 messageText.toLowerCase().startsWith('does') ||
+                                 messageText.toLowerCase().startsWith('do') ||
+                                 (isZh && (messageText.includes('？') || 
+                                          messageText.includes('什么') || 
+                                          messageText.includes('如何') || 
+                                          messageText.includes('为什么') || 
+                                          messageText.includes('什么时候') || 
+                                          messageText.includes('哪里') || 
+                                          messageText.includes('可以') || 
+                                          messageText.includes('是否') ||
+                                          messageText.includes('有没有')));
+
+      if (isFollowUpQuestion) {
+        // User is asking a follow-up question - use /agent/message with the actual question
+        const userMessage: Message = {
+          id: Date.now().toString(),
+          role: 'user',
+          content: messageText,
+          timestamp: new Date(),
+        };
+
+        setMessages((prev) => [...prev, userMessage]);
+        setIsLoading(true);
+        
+        // Lock mode after first message
+        if (!isModeLocked) {
+          setIsModeLocked(true);
+          // Generate thread ID if not exists
+          if (!currentThreadId) {
+            const newThreadId = `thread_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+            setCurrentThreadId(newThreadId);
+            if (onThreadUpdate) {
+              onThreadUpdate(newThreadId, searchContext.hotelName || 'Hotel Search', true);
+            }
+          }
+        }
+
+        try {
+          const userId = getUserId();
+          console.log('[AIAnalyst] Sending follow-up question:', { message: messageText, userId });
+          
+          let timeoutId: NodeJS.Timeout | null = null;
+          const timeoutPromise = new Promise((_, reject) => {
+            timeoutId = setTimeout(() => {
+              reject(new Error(isZh ? '请求超时，请稍后重试' : 'Request timeout, please try again later'));
+            }, 300000); // 300 seconds (5 minutes)
+          });
+          
+          let response: any;
+          try {
+            response = await Promise.race([
+              sendMessageToAgent(messageText, userId),
+              timeoutPromise,
+            ]) as any;
+          
+            if (timeoutId) {
+              clearTimeout(timeoutId);
+              timeoutId = null;
+            }
+          } catch (raceError) {
+            if (timeoutId) {
+              clearTimeout(timeoutId);
+            }
+            throw raceError;
+          }
+          
+          console.log('[AIAnalyst] Received response:', { 
+            status: response.status, 
+            reply_type: response.reply_type,
+            has_reply: !!response.reply,
+            reply_length: response.reply?.length 
+          });
+          
+          if (response.status === 'buffered' || !response.reply) {
+            const bufferedMessage: Message = {
+              id: Date.now().toString(),
+              role: 'assistant',
+              content: isZh 
+                ? '消息已收到，正在处理中...'
+                : 'Message received, processing...',
+              timestamp: new Date(),
+            };
+            setMessages((prev) => [...prev, bufferedMessage]);
+            setIsLoading(false);
+            return;
+          }
+          
+          if (response.reply_type === 'evaluation') {
+            await handleEvaluationResponse(response);
+          } else {
+            let replyText = '';
+            try {
+              if (response.reply) {
+                try {
+                  const parsed = JSON.parse(response.reply);
+                  replyText = parsed.text || parsed.message || response.reply;
+                } catch {
+                  replyText = response.reply;
+                }
+              } else {
+                replyText = isZh ? '未收到回复' : 'No reply received';
+              }
+            } catch {
+              replyText = response.reply || (isZh ? '未收到回复' : 'No reply received');
+            }
+            
+            const assistantMessage: Message = {
+              id: Date.now().toString(),
+              role: 'assistant',
+              content: replyText,
+              timestamp: new Date(),
+            };
+            
+            setMessages((prev) => [...prev, assistantMessage]);
+          }
+        } catch (error: any) {
+          console.error('[AIAnalyst] Failed to get agent response:', error);
+          
+          const errorMessage: Message = {
+            id: Date.now().toString(),
+            role: 'assistant',
+            content: isZh 
+              ? `抱歉，处理您的请求时出现错误：${error.message || '未知错误'}`
+              : `Sorry, an error occurred while processing your request: ${error.message || 'Unknown error'}`,
+            timestamp: new Date(),
+          };
+          
+          setMessages((prev) => [...prev, errorMessage]);
+        } finally {
+          setIsLoading(false);
+        }
+        return; // End of follow-up question handling
+      }
+
+      // User input looks like a new hotel search - update context and use structured compare API
+      const updatedContext: SearchContext = {
+        ...searchContext,
+        hotelName: messageText,
+        isConfirmed: true,
+      };
+      setSearchContext(updatedContext);
+
       const userMessage: Message = {
         id: Date.now().toString(),
         role: 'user',
-        content: buildContextMessage(searchContext),
+        content: buildContextMessage(updatedContext),
         timestamp: new Date(),
       };
 
-    setMessages((prev) => [...prev, userMessage]);
-    setIsLoading(true);
-    
-    // Lock mode after first message
-    if (!isModeLocked) {
-      setIsModeLocked(true);
-      // Generate thread ID if not exists
-      if (!currentThreadId) {
-        const newThreadId = `thread_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
-        setCurrentThreadId(newThreadId);
-        if (onThreadUpdate) {
-          onThreadUpdate(newThreadId, searchContext.hotelName || 'Hotel Search', true);
+      setMessages((prev) => [...prev, userMessage]);
+      setIsLoading(true);
+      
+      // Lock mode after first message
+      if (!isModeLocked) {
+        setIsModeLocked(true);
+        // Generate thread ID if not exists
+        if (!currentThreadId) {
+          const newThreadId = `thread_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+          setCurrentThreadId(newThreadId);
+          if (onThreadUpdate) {
+            onThreadUpdate(newThreadId, messageText, true);
+          }
         }
       }
-    }
 
-    try {
-        const userId = getUserId();
-        const compareParams = formatSearchContextForCompare(searchContext);
+      try {
+          const userId = getUserId();
+          const compareParams = formatSearchContextForCompare(updatedContext);
+          
+          console.log('[AIAnalyst] Sending compare request:', { params: compareParams, userId });
+          
+          let timeoutId: NodeJS.Timeout | null = null;
+          const timeoutPromise = new Promise((_, reject) => {
+            timeoutId = setTimeout(() => {
+              reject(new Error(isZh ? '请求超时，请稍后重试' : 'Request timeout, please try again later'));
+            }, 300000); // 300 seconds (5 minutes)
+          });
+          
+          let response: any;
+          try {
+            response = await Promise.race([
+              compareHotel(compareParams, userId),
+              timeoutPromise,
+            ]) as any;
+          
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+          }
+        } catch (raceError) {
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+          }
+          throw raceError;
+        }
         
-        console.log('[AIAnalyst] Sending compare request:', { params: compareParams, userId });
-        
-        let timeoutId: NodeJS.Timeout | null = null;
-        const timeoutPromise = new Promise((_, reject) => {
-          timeoutId = setTimeout(() => {
-            reject(new Error(isZh ? '请求超时，请稍后重试' : 'Request timeout, please try again later'));
-          }, 300000); // 300 seconds (5 minutes)
+        console.log('[AIAnalyst] Received response:', { 
+          status: response.status, 
+          reply_type: response.reply_type,
+          has_reply: !!response.reply,
+          reply_length: response.reply?.length 
         });
         
-        let response: any;
-        try {
-          response = await Promise.race([
-            compareHotel(compareParams, userId),
-            timeoutPromise,
-          ]) as any;
+        if (response.status === 'buffered' || !response.reply) {
+          const bufferedMessage: Message = {
+            id: Date.now().toString(),
+            role: 'assistant',
+            content: isZh 
+              ? '消息已收到，正在处理中...'
+              : 'Message received, processing...',
+            timestamp: new Date(),
+          };
+          setMessages((prev) => [...prev, bufferedMessage]);
+          setIsLoading(false);
+          return;
+        }
         
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-          timeoutId = null;
+        if (response.reply_type === 'evaluation') {
+          await handleEvaluationResponse(response);
+        } else {
+          let replyText = '';
+          try {
+            if (response.reply) {
+              try {
+                const parsed = JSON.parse(response.reply);
+                replyText = parsed.text || parsed.message || response.reply;
+              } catch {
+                replyText = response.reply;
+              }
+            } else {
+              replyText = isZh ? '未收到回复' : 'No reply received';
+            }
+          } catch {
+            replyText = response.reply || (isZh ? '未收到回复' : 'No reply received');
+          }
+          
+          const assistantMessage: Message = {
+            id: Date.now().toString(),
+            role: 'assistant',
+            content: replyText,
+            timestamp: new Date(),
+          };
+          
+          setMessages((prev) => [...prev, assistantMessage]);
         }
-      } catch (raceError) {
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-        }
-        throw raceError;
-      }
-      
-      console.log('[AIAnalyst] Received response:', { 
-        status: response.status, 
-        reply_type: response.reply_type,
-        has_reply: !!response.reply,
-        reply_length: response.reply?.length 
-      });
-      
-      if (response.status === 'buffered' || !response.reply) {
-        const bufferedMessage: Message = {
+      } catch (error: any) {
+        console.error('[AIAnalyst] Failed to get agent response:', error);
+        
+        const errorMessage: Message = {
           id: Date.now().toString(),
           role: 'assistant',
           content: isZh 
-            ? '消息已收到，正在处理中...'
-            : 'Message received, processing...',
+            ? `抱歉，处理您的请求时出现错误：${error.message || '未知错误'}`
+            : `Sorry, an error occurred while processing your request: ${error.message || 'Unknown error'}`,
           timestamp: new Date(),
         };
-        setMessages((prev) => [...prev, bufferedMessage]);
+        
+        setMessages((prev) => [...prev, errorMessage]);
+      } finally {
         setIsLoading(false);
-        return;
       }
-      
-      if (response.reply_type === 'evaluation') {
-        await handleEvaluationResponse(response);
-      } else {
-        let replyText = '';
-        try {
-          if (response.reply) {
-            try {
-              const parsed = JSON.parse(response.reply);
-              replyText = parsed.text || parsed.message || response.reply;
-            } catch {
-              replyText = response.reply;
-            }
-          } else {
-            replyText = isZh ? '未收到回复' : 'No reply received';
-          }
-        } catch {
-          replyText = response.reply || (isZh ? '未收到回复' : 'No reply received');
-        }
-        
-        const assistantMessage: Message = {
-          id: Date.now().toString(),
-          role: 'assistant',
-          content: replyText,
-          timestamp: new Date(),
-        };
-        
-        setMessages((prev) => [...prev, assistantMessage]);
-      }
-    } catch (error: any) {
-      console.error('[AIAnalyst] Failed to get agent response:', error);
-      
-      const errorMessage: Message = {
-        id: Date.now().toString(),
-        role: 'assistant',
-        content: isZh 
-          ? `抱歉，处理您的请求时出现错误：${error.message || '未知错误'}`
-          : `Sorry, an error occurred while processing your request: ${error.message || 'Unknown error'}`,
-        timestamp: new Date(),
-      };
-      
-      setMessages((prev) => [...prev, errorMessage]);
-    } finally {
-      setIsLoading(false);
-    }
-    return; // End of Check Hotel Mode
+      return; // End of Check Hotel Mode
     }
 
     // Mode 2: General Chat Mode (LLM Semantic Analysis)
@@ -887,16 +1338,16 @@ export default function Analyst({ locale = 'en', threadId, onThreadUpdate }: Ana
 
   useEffect(() => {
     // Set default dates when in Check Hotel Mode and input has content
-    if (isCheckHotelMode && !searchContext.isConfirmed && messages.length === 0) {
+    if (isExpertMode && !searchContext.isConfirmed && messages.length === 0) {
       if (inputValue.trim() && (!searchContext.checkIn || !searchContext.checkOut)) {
         setDefaultDates();
       }
     }
-  }, [inputValue, searchContext.isConfirmed, messages.length, isCheckHotelMode]);
+  }, [inputValue, searchContext.isConfirmed, messages.length, isExpertMode]);
 
   // General Chat Mode - Show when checkbox is unchecked and no messages
   // This should use the same stable layout structure
-  if (!isCheckHotelMode && !searchContext.isConfirmed && messages.length === 0 && !isLoading) {
+  if (!isExpertMode && !searchContext.isConfirmed && messages.length === 0 && !isLoading) {
     return (
       <div className="flex flex-col h-full">
         {/* STABLE Header - Fixed Position */}
@@ -937,8 +1388,8 @@ export default function Analyst({ locale = 'en', threadId, onThreadUpdate }: Ana
                 <label className="flex items-center cursor-pointer gap-2 text-sm text-gray-600 select-none">
                   <input
                     type="checkbox"
-                    checked={isCheckHotelMode}
-                    onChange={(e) => setIsCheckHotelMode(e.target.checked)}
+                    checked={isExpertMode}
+                    onChange={(e) => setIsExpertMode(e.target.checked)}
                     className="rounded text-green-500 focus:ring-green-500 h-4 w-4"
                   />
                   <span>
@@ -1004,15 +1455,55 @@ export default function Analyst({ locale = 'en', threadId, onThreadUpdate }: Ana
               </p>
             </div>
 
+            {/* Mode Tabs - Show when mode is not locked */}
+            {!isModeLocked && (
+              <div className="flex items-center gap-2 mb-3 justify-center">
+                <button
+                  onClick={() => {
+                    setInputMode('expert');
+                    setIsExpertMode(true);
+                  }}
+                  className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+                    inputMode === 'expert'
+                      ? 'bg-[#00CD52] text-white shadow-sm'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <span>🐸</span>
+                    <span>{locale === 'zh' ? '订房专家' : 'Booking Expert'}</span>
+                  </span>
+                </button>
+                <button
+                  onClick={() => {
+                    setInputMode('chat');
+                    setIsExpertMode(false);
+                  }}
+                  className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+                    inputMode === 'chat'
+                      ? 'bg-blue-500 text-white shadow-sm'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <span>💬</span>
+                    <span>{locale === 'zh' ? '通用对话' : 'General Chat'}</span>
+                  </span>
+                </button>
+              </div>
+            )}
+
             {/* STABLE Input Container - Fixed Width & Position */}
-            <div className="w-full bg-white rounded-2xl shadow-sm border-2 border-gray-200 relative mb-4" style={{ overflow: 'visible' }}>
+            <div className={`w-full bg-white rounded-2xl shadow-sm border-2 relative mb-4 transition-all ${
+              inputMode === 'expert' ? 'border-[#00CD52]' : 'border-blue-500'
+            }`} style={{ overflow: 'visible' }}>
               {/* A. Text Input Area */}
               <textarea
                 ref={inputRef}
                 value={inputValue}
                 onChange={(e) => {
                   setInputValue(e.target.value);
-                  if (isCheckHotelMode && e.target.value.trim()) {
+                  if (isExpertMode && e.target.value.trim()) {
                     setSearchContext((prev) => ({
                       ...prev,
                       hotelName: e.target.value.trim(),
@@ -1023,7 +1514,7 @@ export default function Analyst({ locale = 'en', threadId, onThreadUpdate }: Ana
                   }
                 }}
                 onFocus={() => {
-                  if (isCheckHotelMode && inputValue.trim()) {
+                  if (isExpertMode && inputValue.trim()) {
                     if (!searchContext.checkIn || !searchContext.checkOut) {
                       setDefaultDates();
                     }
@@ -1031,7 +1522,7 @@ export default function Analyst({ locale = 'en', threadId, onThreadUpdate }: Ana
                 }}
                 onKeyDown={handleKeyDown}
                 placeholder={
-                  isCheckHotelMode
+                  isExpertMode
                     ? (locale === 'zh' ? '告诉我您梦想的酒店，我会为您找到最优惠的价格...' : 'Tell me your dream hotel, and I\'ll find the best deal for you...')
                     : (locale === 'zh' ? '告诉我您梦想的酒店，我会为您找到最优惠的价格...' : 'Tell me your dream hotel, and I\'ll find the best deal for you...')
                 }
@@ -1041,7 +1532,7 @@ export default function Analyst({ locale = 'en', threadId, onThreadUpdate }: Ana
 
               {/* B. Collapsible Criteria Form - ANIMATED SECTION */}
               <AnimatePresence initial={false}>
-                {isCheckHotelMode && (
+                {inputMode === 'expert' && (
                   <motion.div
                     key="criteria-form"
                     initial={{ height: 0, opacity: 0 }}
@@ -1260,8 +1751,8 @@ export default function Analyst({ locale = 'en', threadId, onThreadUpdate }: Ana
                 <label className="flex items-center cursor-pointer gap-2 text-sm text-gray-600 select-none">
                   <input
                     type="checkbox"
-                    checked={isCheckHotelMode}
-                    onChange={(e) => setIsCheckHotelMode(e.target.checked)}
+                    checked={isExpertMode}
+                    onChange={(e) => setIsExpertMode(e.target.checked)}
                     className="rounded text-green-500 focus:ring-green-500 h-4 w-4"
                   />
                   <span>
@@ -1378,8 +1869,42 @@ export default function Analyst({ locale = 'en', threadId, onThreadUpdate }: Ana
 
       <div className="border-t border-gray-200 bg-white p-4 flex-shrink-0 z-10 shadow-lg relative md:static mobile-input-container">
         <div className="w-full max-w-4xl mx-auto space-y-2">
-          {/* Summary Pill - Show when in Expert Mode and context is confirmed */}
-          {isCheckHotelMode && searchContext.isConfirmed && (
+          {/* Sticky Header - Show when evaluation received */}
+          {hasReceivedEvaluation && searchContext.isConfirmed && (
+            <div className="bg-emerald-50/30 border border-emerald-200 rounded-lg p-3 mb-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex items-center gap-1.5 text-sm text-gray-700">
+                    <span className="font-medium">🏨</span>
+                    <span>{searchContext.hotelName}</span>
+                  </div>
+                  {searchContext.checkIn && searchContext.checkOut && (
+                    <div className="flex items-center gap-1.5 text-sm text-gray-600">
+                      <span>📅</span>
+                      <span>
+                        {formatDate(searchContext.checkIn, isZh)} - {formatDate(searchContext.checkOut, isZh)}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-1.5 text-sm text-gray-600">
+                    <span>👥</span>
+                    <span>
+                      {searchContext.rooms} {isZh ? '间' : searchContext.rooms === 1 ? 'Room' : 'Rooms'}, {searchContext.adults + searchContext.children} {isZh ? '人' : searchContext.adults + searchContext.children === 1 ? 'Guest' : 'Guests'}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  onClick={handleNewComparison}
+                  className="px-3 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-100 hover:bg-emerald-200 rounded-lg transition-colors whitespace-nowrap"
+                >
+                  {locale === 'zh' ? '新比价' : 'New Comparison'}
+                </button>
+              </div>
+            </div>
+          )}
+          
+          {/* Summary Pill - Show when in Expert Mode and context is confirmed but no evaluation yet */}
+          {isExpertMode && searchContext.isConfirmed && !hasReceivedEvaluation && (
             <SummaryPill
               context={searchContext}
               onUpdate={handleContextUpdate}
@@ -1389,42 +1914,73 @@ export default function Analyst({ locale = 'en', threadId, onThreadUpdate }: Ana
             />
           )}
           
-          <div className="relative flex items-end gap-2">
-            {/* Check Hotel Toggle - Only show when mode is not locked */}
-            {!isModeLocked && (
-              <label className="flex items-center gap-2 cursor-pointer flex-shrink-0 mb-3">
-                <input
-                  type="checkbox"
-                  checked={isCheckHotelMode}
-                  onChange={(e) => setIsCheckHotelMode(e.target.checked)}
-                  className="w-4 h-4 text-green-500 border-gray-300 rounded focus:ring-green-500 bg-white"
-                />
-                <span className="text-sm text-gray-700 whitespace-nowrap">
-                  {locale === 'zh' ? '专家模式（自动比价）' : 'Expert Mode (Auto-compare Best Prices)'}
+          {/* Mode Tabs - Show when mode is not locked */}
+          {!isModeLocked && (
+            <div className="flex items-center gap-2 mb-2">
+              <button
+                onClick={() => {
+                  setInputMode('expert');
+                  setIsExpertMode(true);
+                }}
+                className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+                  inputMode === 'expert'
+                    ? 'bg-[#00CD52] text-white shadow-sm'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <span>🐸</span>
+                  <span>{locale === 'zh' ? '订房专家' : 'Booking Expert'}</span>
                 </span>
-              </label>
-            )}
-            
-            <div className="flex-1 relative">
+              </button>
+              <button
+                onClick={() => {
+                  setInputMode('chat');
+                  setIsExpertMode(false);
+                }}
+                className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+                  inputMode === 'chat'
+                    ? 'bg-blue-500 text-white shadow-sm'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                <span className="flex items-center gap-2">
+                  <span>💬</span>
+                  <span>{locale === 'zh' ? '通用对话' : 'General Chat'}</span>
+                </span>
+              </button>
+            </div>
+          )}
+          
+          <div className="relative flex items-end gap-2">
+            <div className={`flex-1 relative transition-all`}>
               <textarea
                 ref={inputRef}
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder={
-                  isCheckHotelMode
-                    ? (locale === 'zh' ? '继续询问...' : 'Continue asking...')
+                  inputMode === 'expert' || (hasReceivedEvaluation && inputMode === 'chat')
+                    ? (locale === 'zh' ? '输入酒店名称进行比价...' : 'Enter hotel name to compare prices...')
                     : (locale === 'zh' ? '输入您的问题...' : 'Type your question...')
                 }
-                className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent resize-none text-base md:text-sm transition-all"
-                rows={2}
+                className={`w-full px-4 py-3 pr-12 border-2 rounded-xl focus:outline-none focus:ring-2 resize-none text-base md:text-sm transition-all ${
+                  inputMode === 'expert' || (hasReceivedEvaluation && isExpertMode)
+                    ? 'border-[#00CD52] focus:ring-[#00CD52] focus:border-[#00CD52]'
+                    : 'border-blue-500 focus:ring-blue-500 focus:border-blue-500'
+                }`}
+                rows={inputMode === 'expert' ? 2 : 3}
               />
               
               {/* Send Button */}
               <button
                 onClick={handleSend}
                 disabled={!inputValue.trim() || isLoading}
-                className="absolute bottom-3 right-3 w-8 h-8 bg-green-500 text-white rounded-lg flex items-center justify-center hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className={`absolute bottom-3 right-3 w-8 h-8 text-white rounded-lg flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${
+                  inputMode === 'expert' || (hasReceivedEvaluation && isExpertMode)
+                    ? 'bg-[#00CD52] hover:bg-[#00CD52]/90'
+                    : 'bg-blue-500 hover:bg-blue-600'
+                }`}
               >
                 <ArrowUp className="w-4 h-4" />
               </button>
