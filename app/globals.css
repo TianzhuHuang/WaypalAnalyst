@@ -28,17 +28,37 @@ html, body {
 .react-datepicker__day--selected,
 .react-datepicker__day--in-range,
 .react-datepicker__day--in-selecting-range {
-  background-color: #3b82f6;
+  background-color: #00CD52;
   color: white;
 }
 
 .react-datepicker__day--range-start,
 .react-datepicker__day--range-end {
-  background-color: #3b82f6;
+  background-color: #00CD52;
   color: white;
 }
 
 .react-datepicker__day:hover {
-  background-color: #93c5fd;
+  background-color: #00CD52;
+  opacity: 0.8;
   color: white;
+}
+
+/* Prevent horizontal scrolling on mobile */
+body {
+  overflow-x: hidden;
+}
+
+/* Mobile keyboard handling */
+@media (max-width: 768px) {
+  /* Ensure input area stays accessible when keyboard pops up */
+  .mobile-input-container {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: white;
+    z-index: 50;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
 }

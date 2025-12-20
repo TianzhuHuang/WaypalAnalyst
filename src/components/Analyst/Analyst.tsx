@@ -1376,7 +1376,7 @@ export default function Analyst({ locale = 'en', threadId, onThreadUpdate }: Ana
         </div>
       </div>
 
-      <div className="border-t border-gray-200 bg-white p-4 flex-shrink-0 z-10 shadow-lg relative">
+      <div className="border-t border-gray-200 bg-white p-4 flex-shrink-0 z-10 shadow-lg relative md:static mobile-input-container">
         <div className="w-full max-w-4xl mx-auto space-y-2">
           {/* Summary Pill - Show when in Expert Mode and context is confirmed */}
           {isCheckHotelMode && searchContext.isConfirmed && (

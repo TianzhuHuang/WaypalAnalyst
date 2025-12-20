@@ -219,7 +219,7 @@ export default function AnalystComparisonCard({
               href={rows[0].websiteUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-sm font-normal rounded-lg transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-sm font-normal rounded-lg transition-colors"
             >
               <ShieldCheck className="w-4 h-4" />
               <span>{isZh ? '官方网站' : 'Official Site'}</span>
@@ -412,8 +412,8 @@ export default function AnalystComparisonCard({
                             <div className="space-y-1.5 pt-1">
                               {row.perks.vipBenefits.map((benefit, benefitIndex) => (
                                 <div key={benefitIndex} className="flex items-center gap-2">
-                                  <div className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />
-                                  <span className="text-xs text-blue-600">{benefit}</span>
+                                  <div className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+                                  <span className="text-xs text-green-600">{benefit}</span>
                                 </div>
                               ))}
                             </div>
@@ -492,7 +492,7 @@ export default function AnalystComparisonCard({
                         href={row.websiteUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-blue-600 hover:text-blue-700 hover:underline inline-flex items-center gap-1 text-sm"
+                        className="text-green-600 hover:text-green-700 hover:underline inline-flex items-center gap-1 text-sm"
                       >
                         <span>{isZh ? '访问网站' : 'Visit Site'}</span>
                         <ExternalLink className="w-3.5 h-3.5" />
@@ -522,7 +522,7 @@ export default function AnalystComparisonCard({
             <div
               key={index}
               className={`bg-white border-2 rounded-xl p-4 ${
-                row.isBest ? 'border-purple-500 shadow-lg' : 'border-gray-200'
+                row.isBest || row.platform?.toLowerCase() === 'luxtrip' ? 'border-green-500 shadow-lg' : 'border-gray-200'
               }`}
             >
               {/* Card Header - Platform & Price */}
@@ -537,19 +537,19 @@ export default function AnalystComparisonCard({
                       />
                     )}
                     <span className={`text-base font-semibold ${
-                      row.isBest ? 'text-purple-600' : 'text-gray-700'
+                      row.isBest || row.platform?.toLowerCase() === 'luxtrip' ? 'text-green-600' : 'text-gray-700'
                     }`}>
                       {row.platform}
                     </span>
-                    {row.isBest && (
-                      <span className="px-2 py-0.5 bg-blue-500 text-white text-xs font-medium rounded">
-                        {isZh ? '推荐' : 'RECOMMENDED'}
+                    {(row.isBest || row.platform?.toLowerCase() === 'luxtrip') && (
+                      <span className="px-2 py-0.5 bg-green-500 text-white text-xs font-medium rounded">
+                        {isZh ? '最佳价值' : 'BEST VALUE'}
                       </span>
                     )}
                   </div>
                   <div className="flex flex-col">
                     <span className={`font-bold text-2xl leading-tight ${
-                      row.isBest ? 'text-purple-600' : 'text-gray-900'
+                      row.isBest || row.platform?.toLowerCase() === 'luxtrip' ? 'text-green-600' : 'text-gray-900'
                     }`}>
                       {row.totalPrice}
                     </span>
@@ -560,49 +560,90 @@ export default function AnalystComparisonCard({
                 </div>
               </div>
 
+              {/* Promotions Section */}
+              {row.promotions && row.promotions.length > 0 && (
+                <div className="mb-4 pb-4 border-b border-gray-200">
+                  <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
+                    {isZh ? '优惠政策' : 'PROMOTIONS'}
+                  </h4>
+                  <div className="space-y-2">
+                    {row.promotions.map((promo, promoIndex) => (
+                      <button
+                        key={promoIndex}
+                        onClick={() => openModal(promo.name, promo.description, promo.available_until)}
+                        className="w-full inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-orange-50 hover:bg-orange-100 border border-orange-200 text-orange-700 text-xs font-medium rounded-lg transition-colors cursor-pointer text-left"
+                      >
+                        <Gift className="w-3 h-3 flex-shrink-0" />
+                        <span className="flex-1">{promo.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Perks Section */}
               <div className="mb-4 pb-4 border-b border-gray-200">
                 <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">
-                  {isZh ? '礼遇' : 'PERKS'}
+                  {isZh ? '专属礼遇' : 'PERKS'}
                 </h4>
                 <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <ForkSpoonIconSimple className="w-4 h-4" />
-                    <span className="text-sm text-gray-900 font-medium">
-                      {breakfastText}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {row.perks.pointsAccumulatable ? (
-                      <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" strokeWidth={1.5} />
-                    ) : (
-                      <Star className="w-4 h-4 text-gray-300" fill="none" strokeWidth={1.5} />
-                    )}
-                    <span className="text-sm text-gray-900">
-                      {row.perks.pointsAccumulatable
-                        ? (isZh ? '可累积积分' : 'Earns Points')
-                        : (isZh ? '不可累积积分' : 'No Points')}
-                    </span>
-                  </div>
-                  {row.perks.vipBenefits && row.perks.vipBenefits.length > 0 && (
-                    <div className="space-y-1.5 pt-1">
-                      {row.perks.vipBenefits.map((benefit, benefitIndex) => (
-                        <div key={benefitIndex} className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full bg-blue-500 flex-shrink-0" />
-                          <span className="text-xs text-blue-600">{benefit}</span>
-                        </div>
+                  {/* Structured Perks - Green badges */}
+                  {row.structuredPerks && row.structuredPerks.length > 0 ? (
+                    <div className="space-y-1.5">
+                      {row.structuredPerks.map((perk, perkIndex) => (
+                        <button
+                          key={perkIndex}
+                          onClick={() => openModal(perk.label, perk.detail)}
+                          className="w-full inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-xs font-medium rounded-lg transition-colors cursor-pointer text-left"
+                        >
+                          <Sparkles className="w-3 h-3 flex-shrink-0" />
+                          <span className="truncate">{perk.label}</span>
+                        </button>
                       ))}
                     </div>
-                  )}
-                  {row.perks.negativePerks && row.perks.negativePerks.length > 0 && (
-                    <div className="space-y-1.5 pt-1">
-                      {row.perks.negativePerks.map((perk, perkIndex) => (
-                        <div key={perkIndex} className="flex items-center gap-2">
-                          <div className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
-                          <span className="text-xs text-red-600">{perk}</span>
+                  ) : row.perks.perksSummary ? (
+                    <span className="text-xs text-emerald-700">{row.perks.perksSummary}</span>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <ForkSpoonIconSimple className="w-4 h-4" />
+                        <span className="text-sm text-gray-900 font-medium">
+                          {breakfastText}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {row.perks.pointsAccumulatable ? (
+                          <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" strokeWidth={1.5} />
+                        ) : (
+                          <Star className="w-4 h-4 text-gray-300" fill="none" strokeWidth={1.5} />
+                        )}
+                        <span className="text-sm text-gray-900">
+                          {row.perks.pointsAccumulatable
+                            ? (isZh ? '可累积积分' : 'Earns Points')
+                            : (isZh ? '不可累积积分' : 'No Points')}
+                        </span>
+                      </div>
+                      {row.perks.vipBenefits && row.perks.vipBenefits.length > 0 && (
+                        <div className="space-y-1.5 pt-1">
+                          {row.perks.vipBenefits.map((benefit, benefitIndex) => (
+                            <div key={benefitIndex} className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+                              <span className="text-xs text-green-600">{benefit}</span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
+                      )}
+                      {row.perks.negativePerks && row.perks.negativePerks.length > 0 && (
+                        <div className="space-y-1.5 pt-1">
+                          {row.perks.negativePerks.map((perk, perkIndex) => (
+                            <div key={perkIndex} className="flex items-center gap-2">
+                              <div className="w-2 h-2 rounded-full bg-red-500 flex-shrink-0" />
+                              <span className="text-xs text-red-600">{perk}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
                   )}
                   {row.perksValue && (
                     <div className="mt-3">
@@ -674,7 +715,7 @@ export default function AnalystComparisonCard({
                     href={row.websiteUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors"
+                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 bg-green-500 text-white text-sm font-medium rounded-lg hover:bg-green-600 transition-colors"
                   >
                     <span>{isZh ? '访问网站' : 'Visit Site'}</span>
                     <ExternalLink className="w-4 h-4" />
