@@ -2008,6 +2008,7 @@ function convertEvaluationDataToRows(
   locale: string
 ): any[] {
   const isZh = locale === 'zh';
+  const nights = evaluationData.nights && evaluationData.nights > 0 ? evaluationData.nights : null;
   
   // Prioritize reply_json.table_rows if available
   const tableRows = evaluationData.reply_json?.table_rows || evaluationData.table_rows || [];
@@ -2135,6 +2136,55 @@ function convertEvaluationDataToRows(
       perks.perksSummary = row.benefits.perks_summary;
     }
     
+    // ---------- Price formatting helpers with robust fallbacks ----------
+    const currencyCode: string | undefined =
+      (row.rateInfo && row.rateInfo.currencyCode) ||
+      (row as any).currency ||
+      (row as any).currency_code;
+
+    const formatPrice = (value: any): string | undefined => {
+      if (value === undefined || value === null || value === '') return undefined;
+      const num = typeof value === 'number' ? value : parseFloat(String(value));
+      if (Number.isNaN(num)) return String(value);
+
+      // Basic currency symbol mapping (can be extended as needed)
+      let symbol = '';
+      if (!currencyCode || currencyCode === 'CNY' || currencyCode === 'RMB' || currencyCode === 'CNH') {
+        symbol = '¥';
+      } else if (currencyCode === 'USD') {
+        symbol = '$';
+      }
+
+      const rounded = Math.round(num);
+      return symbol ? `${symbol}${rounded.toLocaleString()}` : `${rounded.toLocaleString()}${currencyCode ? ` ${currencyCode}` : ''}`;
+    };
+
+    // Total price: try multiple fields from new/legacy schemas
+    const rawTotalPrice =
+      row.rateInfo?.totalPrice ??
+      (row as any).total_price ??
+      (row as any).totalPrice ??
+      (row as any).before_tax_price;
+
+    const totalPriceDisplay =
+      row.rateInfo?.totalPriceDisplay ||
+      (row as any).total_price_display ||
+      (row as any).totalPriceDisplay ||
+      formatPrice(rawTotalPrice);
+
+    // Nightly price: try explicit field, then derive from total / nights
+    const rawNightlyPrice =
+      row.rateInfo?.nightlyPrice ??
+      (row as any).nightly_price ??
+      (row as any).nightlyPrice ??
+      (rawTotalPrice && nights ? rawTotalPrice / nights : undefined);
+
+    const nightlyPriceDisplay =
+      row.rateInfo?.nightlyPriceDisplay ||
+      (row as any).nightly_price_display ||
+      (row as any).nightlyPriceDisplay ||
+      formatPrice(rawNightlyPrice);
+
     const policy: any = {
       cancellationPolicy: cancellationPolicy || (isZh ? '未知' : 'Unknown'),
       cancellationPolicyType: cancellationType,
@@ -2143,8 +2193,8 @@ function convertEvaluationDataToRows(
       paymentPolicyText,
     };
     
-    const totalPrice = row.rateInfo?.totalPriceDisplay || 'N/A';
-    const nightlyPrice = row.rateInfo?.nightlyPriceDisplay || 'N/A';
+    const totalPrice = totalPriceDisplay || 'N/A';
+    const nightlyPrice = nightlyPriceDisplay || 'N/A';
     
     return {
       platform: row.platform || 'Unknown',
