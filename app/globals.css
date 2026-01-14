@@ -7,15 +7,79 @@ html, body {
   height: 100%;
   margin: 0;
   padding: 0;
-  background-color: white;
+  background-color: #050607;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
 }
 
 #__next {
   height: 100%;
-  background-color: white;
+  background-color: #050607;
 }
 
-/* React DatePicker styles */
+/* Custom scrollbar */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Animations */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+.animate-fade-up {
+  animation: fadeUp 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+.animate-slide-in-right {
+  animation: slideInRight 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Message content styling */
+.message-content p {
+  margin-bottom: 0.6rem;
+}
+.message-content p:last-child {
+  margin-bottom: 0;
+}
+.message-content b, .message-content strong {
+  color: #12d65e;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+/* Input placeholder */
+input::placeholder {
+  color: rgba(255, 255, 255, 0.15);
+}
+
+/* Prevent overscroll */
+body {
+  overscroll-behavior-y: contain;
+}
+
+/* Fix for mobile input focus zoom */
+@media screen and (max-width: 768px) {
+  input {
+    font-size: 16px !important;
+  }
+}
+
+/* React DatePicker styles - Updated for dark theme */
 .react-datepicker {
   font-family: inherit;
 }
@@ -28,37 +92,18 @@ html, body {
 .react-datepicker__day--selected,
 .react-datepicker__day--in-range,
 .react-datepicker__day--in-selecting-range {
-  background-color: #00CD52;
+  background-color: #2563eb;
   color: white;
 }
 
 .react-datepicker__day--range-start,
 .react-datepicker__day--range-end {
-  background-color: #00CD52;
+  background-color: #2563eb;
   color: white;
 }
 
 .react-datepicker__day:hover {
-  background-color: #00CD52;
+  background-color: #2563eb;
   opacity: 0.8;
   color: white;
-}
-
-/* Prevent horizontal scrolling on mobile */
-body {
-  overflow-x: hidden;
-}
-
-/* Mobile keyboard handling */
-@media (max-width: 768px) {
-  /* Ensure input area stays accessible when keyboard pops up */
-  .mobile-input-container {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: white;
-    z-index: 50;
-    padding-bottom: env(safe-area-inset-bottom);
-  }
 }
