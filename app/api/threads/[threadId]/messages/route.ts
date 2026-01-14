@@ -4,6 +4,9 @@ import { db } from '@/lib/db';
 import { messages, threads } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 
+// 强制动态渲染，避免构建时收集数据
+export const dynamic = 'force-dynamic';
+
 // 保存消息
 export async function POST(
   request: NextRequest,

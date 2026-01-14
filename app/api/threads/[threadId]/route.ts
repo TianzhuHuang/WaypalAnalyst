@@ -4,6 +4,9 @@ import { db } from '@/lib/db';
 import { threads } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
 
+// 强制动态渲染，避免构建时收集数据
+export const dynamic = 'force-dynamic';
+
 // 获取单个 Thread 详情
 export async function GET(
   request: NextRequest,
