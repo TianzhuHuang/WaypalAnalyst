@@ -8,7 +8,10 @@ import DarkComparisonTable from './DarkComparisonTable';
 import VideoTourList from './VideoTourList';
 import VideoModal from './VideoModal';
 import ProfileSidebar from './ProfileSidebar';
+import LoginButton from './auth/LoginButton';
 import { compareHotel, sendMessageToAgent, parseEvaluationReply, getBookingStrategy } from '@/api/agentApi';
+import { useThread } from '@/hooks/useThread';
+import { useAuth } from '@/hooks/useAuth';
 
 const getLocalDateString = (date: Date) => {
   const offset = date.getTimezoneOffset();
@@ -59,6 +62,45 @@ export default function WaypalApp() {
   const [currentHotelId, setCurrentHotelId] = useState<number | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  
+  // Thread 管理
+  const { createThread, saveMessage, loadThread, updateThreadContext, currentThreadId, setCurrentThreadId } = useThread();
+  const { isAuthenticated } = useAuth();
+
+  // 处理 Thread 切换
+  const handleSelectThread = async (threadId: string) => {
+    if (threadId === currentThreadId) return;
+    
+    setCurrentThreadId(threadId);
+    setIsStarted(true);
+    
+    // 加载 Thread 消息
+    const messages = await loadThread(threadId);
+    if (messages && Array.isArray(messages)) {
+      // 转换数据库消息格式为前端消息格式
+      const convertedMessages: Message[] = messages.map((msg: any) => ({
+        id: msg.id,
+        role: msg.role as 'user' | 'assistant',
+        content: msg.content,
+        timestamp: new Date(msg.createdAt).getTime(),
+        // 如果有 metadata，尝试解析 comparisonData
+        ...(msg.metadata?.comparisonData && {
+          type: 'comparison',
+          comparisonData: msg.metadata.comparisonData,
+        }),
+      }));
+      setMessages(convertedMessages);
+    }
+  };
+
+  // 处理新对话
+  const handleNewChat = () => {
+    setCurrentThreadId(null);
+    setIsStarted(false);
+    setMessages([]);
+    setHotelName('');
+    setDynamicSuggestions([]);
+  };
 
   const quickActions = useMemo(() => [
     { label: "全网找优惠", icon: <i className="fa-solid fa-magnifying-glass-dollar"></i>, action: "全网找优惠" },
@@ -94,6 +136,19 @@ export default function WaypalApp() {
     if (!isStarted) {
       if (!hotelName.trim()) return;
       setIsStarted(true);
+      
+      // 创建 Thread（如果用户已登录）
+      let threadId = currentThreadId;
+      if (isAuthenticated && !threadId) {
+        threadId = await createThread({
+          hotelName,
+          hotelId: currentHotelId?.toString(),
+          checkIn: startDate,
+          checkOut: endDate,
+          metadata: {},
+        }) || null;
+      }
+      
       const welcome: Message = { 
         id: 'welcome', 
         role: 'assistant', 
@@ -101,6 +156,12 @@ export default function WaypalApp() {
         timestamp: Date.now() 
       };
       setMessages([welcome]);
+      
+      // 保存欢迎消息到数据库
+      if (threadId && isAuthenticated) {
+        await saveMessage(threadId, 'assistant', welcome.content);
+      }
+      
       if (forcedQuery) {
         setTimeout(() => executeSpecialAction(forcedQuery), 100);
       }
@@ -108,7 +169,20 @@ export default function WaypalApp() {
     }
 
     if (!text.trim()) return;
-    setMessages(prev => [...prev, { id: `u-${Date.now()}`, role: 'user', content: text, timestamp: Date.now() }]);
+    
+    const userMessage: Message = { 
+      id: `u-${Date.now()}`, 
+      role: 'user', 
+      content: text, 
+      timestamp: Date.now() 
+    };
+    setMessages(prev => [...prev, userMessage]);
+    
+    // 保存用户消息到数据库
+    if (currentThreadId && isAuthenticated) {
+      await saveMessage(currentThreadId, 'user', text);
+    }
+    
     setInputValue('');
     setIsLoading(true);
     setDynamicSuggestions([]);
@@ -129,23 +203,40 @@ export default function WaypalApp() {
       
       if (res.reply_type === 'evaluation' && res.reply) {
         const evaluationData = parseEvaluationReply(res.reply);
-        setMessages(prev => [...prev, { 
+        const assistantMessage: Message = {
           id: `a-${Date.now()}`, 
           role: 'assistant', 
           type: 'comparison',
           content: '已为您整理实时极惠方案',
           comparisonData: evaluationData, 
           timestamp: Date.now() 
-        }]);
+        };
+        setMessages(prev => [...prev, assistantMessage]);
+        
+        // 保存消息和更新 Thread metadata
+        if (currentThreadId && isAuthenticated) {
+          await saveMessage(currentThreadId, 'assistant', assistantMessage.content);
+          // 更新 Thread metadata 保存比价结果
+          await updateThreadContext(currentThreadId, {
+            metadata: { comparisonData: evaluationData },
+          });
+        }
+        
         setDynamicSuggestions(["分析具体礼遇", "查看房型实拍", "立即预订最佳方案"]);
       } else {
         const replyText = res.reply ? JSON.parse(res.reply).text || res.reply : '非常抱歉，尊贵的宾客，我暂时无法同步实时数据。请稍后再试';
-        setMessages(prev => [...prev, { 
+        const assistantMessage: Message = {
           id: `a-${Date.now()}`, 
           role: 'assistant', 
           content: replyText, 
           timestamp: Date.now() 
-        }]);
+        };
+        setMessages(prev => [...prev, assistantMessage]);
+        
+        // 保存消息到数据库
+        if (currentThreadId && isAuthenticated) {
+          await saveMessage(currentThreadId, 'assistant', replyText);
+        }
       }
     } catch (e) {
       console.error(e);
@@ -181,21 +272,28 @@ export default function WaypalApp() {
           try {
             const evaluationData = parseEvaluationReply(res.reply);
             // 尝试从返回数据中获取hotelId（如果存在）
-            // 注意：根据PDF文档，reply_json中可能没有hotelId字段
-            // 如果无法获取，用户需要手动提供hotelId或使用其他方式
-            // 这里先尝试从evaluationData中获取，如果不存在则保持currentHotelId为null
             if (evaluationData && (evaluationData as any).hotel_id) {
               setCurrentHotelId((evaluationData as any).hotel_id);
             }
             
-            setMessages(prev => [...prev, { 
+            const assistantMessage: Message = {
               id: `a-${Date.now()}`, 
               role: 'assistant', 
               type: 'comparison', 
               content: '已为您整理实时极惠方案',
               comparisonData: evaluationData, 
               timestamp: Date.now() 
-            }]);
+            };
+            setMessages(prev => [...prev, assistantMessage]);
+            
+            // 保存消息和更新 Thread metadata
+            if (currentThreadId && isAuthenticated) {
+              await saveMessage(currentThreadId, 'assistant', assistantMessage.content);
+              await updateThreadContext(currentThreadId, {
+                metadata: { comparisonData: evaluationData },
+              });
+            }
+            
             setDynamicSuggestions(["分析具体礼遇", "查看房型实拍", "立即预订最佳方案", "预定方案推荐"]);
           } catch (parseError) {
             console.error('Failed to parse evaluation data:', parseError);
@@ -304,12 +402,17 @@ export default function WaypalApp() {
         <div className="flex items-center gap-1.5">
            <span className="text-[14px] md:text-[16px] font-black tracking-tighter uppercase opacity-90">WayPal<span className="text-[#00df81]">.ai</span></span>
         </div>
-        <button 
-          onClick={() => setShowProfile(true)}
-          className="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center bg-white/5 active:scale-95 transition-all hover:border-white/30"
-        >
-          <i className="fa-solid fa-user text-sm text-white/40"></i>
-        </button>
+        <div className="flex items-center gap-2">
+          <LoginButton />
+          {isAuthenticated && (
+            <button 
+              onClick={() => setShowProfile(true)}
+              className="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center bg-white/5 active:scale-95 transition-all hover:border-white/30"
+            >
+              <i className="fa-solid fa-user text-sm text-white/40"></i>
+            </button>
+          )}
+        </div>
       </header>
 
       <main className="relative z-10 w-full max-w-2xl flex-1 flex flex-col px-5 md:px-6 overflow-hidden">

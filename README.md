@@ -45,8 +45,27 @@ npm install
 
 3. Create `.env.local` file:
 ```bash
+# Backend API
 NEXT_PUBLIC_AGENT_BACKEND_URL=https://waypal-agent-backend-266509309806.asia-east1.run.app
+
+# Database (Google Cloud SQL PostgreSQL)
+DATABASE_URL=postgresql://user:password@host:port/database
+
+# NextAuth.js v5 (Authentication)
+AUTH_SECRET=your-secret-key-here
+AUTH_URL=http://localhost:3000
+AUTH_TRUST_HOST=true
+
+# Google OAuth
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+
+# Legacy NextAuth variables (optional, for backward compatibility)
+NEXTAUTH_SECRET=your-secret-key-here
+NEXTAUTH_URL=http://localhost:3000
 ```
+
+**Note**: For Google OAuth setup, see [GOOGLE_OAUTH_SETUP.md](./GOOGLE_OAUTH_SETUP.md)
 
 4. Run the development server:
 ```bash
@@ -83,6 +102,8 @@ WaypalAnalyst/
 ## 🔧 Technology Stack
 
 - **Framework**: Next.js 16.1.0 (React 18+)
+- **Authentication**: NextAuth.js v5 (Google OAuth)
+- **Database**: Google Cloud SQL (PostgreSQL) with Drizzle ORM
 - **Styling**: Tailwind CSS
 - **Animations**: Framer Motion
 - **Date Picker**: React DatePicker
@@ -124,10 +145,25 @@ The project includes `cloudbuild.yaml` for automated CI/CD via Google Cloud Buil
 
 **Live Demo**: https://waypal-ai-luxury-hotel-assistant-279558140163.us-west1.run.app/
 
+## 🔐 Authentication & Database
+
+### Google OAuth Setup
+The application uses NextAuth.js v5 with Google OAuth for authentication. See [GOOGLE_OAUTH_SETUP.md](./GOOGLE_OAUTH_SETUP.md) for detailed setup instructions.
+
+### Database Setup
+The application uses Google Cloud SQL (PostgreSQL) with Drizzle ORM. Database schema is defined in `src/lib/db/schema.ts`.
+
+**Key Features:**
+- User profiles with preferences (bed preference, budget level, dietary restrictions)
+- Conversation threads and messages persistence
+- Order tracking (for future booking functionality)
+
 ## 📄 Documentation
 
 - [Project Description](./PROJECT_DESCRIPTION.md) - Detailed project overview
 - [Backend API Reference](./backend_api_reference.md) - API documentation
+- [Google OAuth Setup](./GOOGLE_OAUTH_SETUP.md) - Google OAuth configuration guide
+- [Module 1 Implementation](./MODULE_1_IMPLEMENTATION.md) - Login and conversation persistence implementation
 
 ## 🤝 Contributing
 

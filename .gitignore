@@ -42,6 +42,9 @@ next-env.d.ts
 *.swo
 *~
 
+# Debug logs and Cursor IDE
+.cursor/
+
 # OS
 .DS_Store
 Thumbs.db

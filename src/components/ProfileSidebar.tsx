@@ -1,13 +1,76 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '@/hooks/useAuth';
 
 interface ProfileSidebarProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
+interface Profile {
+  id: string;
+  email: string;
+  fullName: string | null;
+  avatarUrl: string | null;
+  bedPreference: string | null;
+  budgetLevel: string | null;
+  dietaryRestrictions: string | null;
+}
+
 export default function ProfileSidebar({ isOpen, onClose }: ProfileSidebarProps) {
+  const { isAuthenticated } = useAuth();
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [formData, setFormData] = useState({
+    bedPreference: '',
+    budgetLevel: '',
+    dietaryRestrictions: '',
+  });
+
+  useEffect(() => {
+    if (isOpen && isAuthenticated) {
+      loadProfile();
+    }
+  }, [isOpen, isAuthenticated]);
+
+  const loadProfile = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/profile');
+      if (response.ok) {
+        const data = await response.json();
+        setProfile(data);
+        setFormData({
+          bedPreference: data.bedPreference || 'King Size',
+          budgetLevel: data.budgetLevel || 'Luxury',
+          dietaryRestrictions: data.dietaryRestrictions || '',
+        });
+      }
+    } catch (error) {
+      console.error('Failed to load profile:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    try {
+      const response = await fetch('/api/profile', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
+      });
+      if (response.ok) {
+        await loadProfile();
+        setIsEditing(false);
+      }
+    } catch (error) {
+      console.error('Failed to update profile:', error);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -23,6 +86,124 @@ export default function ProfileSidebar({ isOpen, onClose }: ProfileSidebarProps)
           </button>
         </header>
         <div className="px-6 pb-12 md:px-8 space-y-10">
+          {/* User Profile Section */}
+          {isAuthenticated && (
+            <section className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-[12px] font-black text-white/30 uppercase tracking-[0.2em] ml-1">个人偏好</h3>
+                {!isEditing && (
+                  <button
+                    onClick={() => setIsEditing(true)}
+                    className="text-[11px] font-bold text-[#12d65e] hover:text-[#15e064] transition-colors"
+                  >
+                    编辑
+                  </button>
+                )}
+              </div>
+              {isLoading ? (
+                <div className="p-4 text-center text-white/40">
+                  <div className="w-6 h-6 border-2 border-white/20 border-t-white/60 rounded-full animate-spin mx-auto" />
+                </div>
+              ) : profile ? (
+                <div className="space-y-4">
+                  <div className="p-5 rounded-[20px] border border-white/5 bg-white/5">
+                    <div className="flex items-center gap-4 mb-4">
+                      {profile.avatarUrl ? (
+                        <img
+                          src={profile.avatarUrl}
+                          alt={profile.fullName || profile.email}
+                          className="w-16 h-16 rounded-full border-2 border-white/10"
+                        />
+                      ) : (
+                        <div className="w-16 h-16 rounded-full border-2 border-white/10 bg-white/5 flex items-center justify-center">
+                          <span className="text-2xl">👤</span>
+                        </div>
+                      )}
+                      <div>
+                        <div className="text-lg font-black text-white">{profile.fullName || '用户'}</div>
+                        <div className="text-xs text-white/40">{profile.email}</div>
+                      </div>
+                    </div>
+                    {isEditing ? (
+                      <div className="space-y-4">
+                        <div>
+                          <label className="text-xs font-bold text-white/40 mb-2 block">床型偏好</label>
+                          <select
+                            value={formData.bedPreference}
+                            onChange={(e) => setFormData({ ...formData, bedPreference: e.target.value })}
+                            className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#12d65e]"
+                          >
+                            <option value="King Size">大床</option>
+                            <option value="Twin Beds">双床</option>
+                            <option value="Queen Size">标准双人床</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs font-bold text-white/40 mb-2 block">预算级别</label>
+                          <select
+                            value={formData.budgetLevel}
+                            onChange={(e) => setFormData({ ...formData, budgetLevel: e.target.value })}
+                            className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm focus:outline-none focus:border-[#12d65e]"
+                          >
+                            <option value="Luxury">奢侈</option>
+                            <option value="Premium">精品</option>
+                            <option value="Value">性价比</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-xs font-bold text-white/40 mb-2 block">饮食禁忌</label>
+                          <input
+                            type="text"
+                            value={formData.dietaryRestrictions}
+                            onChange={(e) => setFormData({ ...formData, dietaryRestrictions: e.target.value })}
+                            placeholder="例如：素食、无麸质"
+                            className="w-full px-4 py-2 bg-white/5 border border-white/10 rounded-lg text-white text-sm placeholder-white/20 focus:outline-none focus:border-[#12d65e]"
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={handleSave}
+                            className="flex-1 px-4 py-2 bg-[#12d65e] hover:bg-[#15e064] text-black rounded-lg font-bold text-sm transition-colors"
+                          >
+                            保存
+                          </button>
+                          <button
+                            onClick={() => {
+                              setIsEditing(false);
+                              loadProfile();
+                            }}
+                            className="flex-1 px-4 py-2 bg-white/5 hover:bg-white/10 text-white rounded-lg font-bold text-sm transition-colors"
+                          >
+                            取消
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <div>
+                          <div className="text-xs font-bold text-white/40 mb-1">床型偏好</div>
+                          <div className="text-sm text-white">{profile.bedPreference || '未设置'}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-white/40 mb-1">预算级别</div>
+                          <div className="text-sm text-white">{profile.budgetLevel || '未设置'}</div>
+                        </div>
+                        {profile.dietaryRestrictions && (
+                          <div>
+                            <div className="text-xs font-bold text-white/40 mb-1">饮食禁忌</div>
+                            <div className="text-sm text-white">{profile.dietaryRestrictions}</div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="p-4 text-center text-white/40 text-sm">无法加载用户资料</div>
+              )}
+            </section>
+          )}
+
           <section className="space-y-4">
             <h3 className="text-[12px] font-black text-white/30 uppercase tracking-[0.2em] ml-1">历史入住记录足迹</h3>
             <div className="relative w-full aspect-[16/9] rounded-[24px] overflow-hidden bg-white/5 border border-white/5">
