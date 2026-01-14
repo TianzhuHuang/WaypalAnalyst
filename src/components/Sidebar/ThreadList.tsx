@@ -1,9 +1,12 @@
 'use client';
 
-import { useThreadList } from '@/hooks/useThreadList';
+import { useState, useRef } from 'react';
 import { MessageSquare, Clock, Trash2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
+import { useThreadListQuery } from '@/hooks/useThreadListQuery';
+import { useQueryClient } from '@tanstack/react-query';
+import ThreadListSkeleton from './ThreadListSkeleton';
 
 interface ThreadListProps {
   onSelectThread: (threadId: string) => void;
@@ -14,35 +17,77 @@ interface ThreadListProps {
 export default function ThreadList({ 
   onSelectThread, 
   currentThreadId,
-  onDeleteThread 
+  onDeleteThread,
 }: ThreadListProps) {
-  const { threads, isLoading, error } = useThreadList();
-
-  const handleDelete = async (e: React.MouseEvent, threadId: string) => {
-    e.stopPropagation();
-    if (onDeleteThread) {
-      onDeleteThread(threadId);
-    } else {
-      // 默认删除逻辑
-      try {
-        const response = await fetch(`/api/threads/${threadId}`, {
-          method: 'DELETE',
-        });
-        if (response.ok) {
-          // 刷新列表
-          window.location.reload();
-        }
-      } catch (err) {
-        console.error('Failed to delete thread:', err);
-      }
+  const { threads, isLoading, error, deleteThread, isDeleting } = useThreadListQuery();
+  const queryClient = useQueryClient();
+  const [hoveredThreadId, setHoveredThreadId] = useState<string | null>(null);
+  
+  // 预取 Thread 数据（当鼠标悬停超过 100ms）
+  const prefetchTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  
+  const handleMouseEnter = (threadId: string) => {
+    setHoveredThreadId(threadId);
+    const timer = setTimeout(() => {
+      // 预取 Thread 详情和消息
+      queryClient.prefetchQuery({
+        queryKey: ['thread', threadId],
+        queryFn: async () => {
+          const response = await fetch(`/api/threads/${threadId}`);
+          if (!response.ok) throw new Error('Failed to load thread');
+          return response.json();
+        },
+      });
+      queryClient.prefetchQuery({
+        queryKey: ['thread-messages', threadId],
+        queryFn: async () => {
+          const response = await fetch(`/api/threads/${threadId}/messages`);
+          if (!response.ok) throw new Error('Failed to load messages');
+          return response.json();
+        },
+      });
+      prefetchTimersRef.current.delete(threadId);
+    }, 100);
+    prefetchTimersRef.current.set(threadId, timer);
+  };
+  
+  const handleMouseLeave = (threadId: string) => {
+    setHoveredThreadId(null);
+    const timer = prefetchTimersRef.current.get(threadId);
+    if (timer) {
+      clearTimeout(timer);
+      prefetchTimersRef.current.delete(threadId);
     }
+  };
+  
+  const handleDelete = (e: React.MouseEvent, threadId: string) => {
+    e.stopPropagation();
+    e.preventDefault();
+    
+    console.log('[ThreadList] handleDelete called for thread:', threadId);
+    console.log('[ThreadList] onDeleteThread exists:', !!onDeleteThread);
+    console.log('[ThreadList] deleteThread function:', typeof deleteThread);
+    
+    // 如果提供了外部删除处理函数，先调用它（处理重置逻辑，如清空当前 Thread）
+    if (onDeleteThread) {
+      console.log('[ThreadList] Calling onDeleteThread callback');
+      onDeleteThread(threadId);
+    }
+    
+    // 始终使用 React Query 的删除 mutation（包含乐观更新和 Toast）
+    // 这会立即从列表中移除 Thread，并显示 Toast 提示
+    console.log('[ThreadList] Calling deleteThread mutation');
+    deleteThread(threadId);
   };
 
   if (isLoading) {
     return (
-      <div className="p-4 text-center text-white/40">
-        <div className="w-6 h-6 border-2 border-white/20 border-t-white/60 rounded-full animate-spin mx-auto mb-2" />
-        <p className="text-sm">加载中...</p>
+      <div className="p-2">
+        <div className="p-4 text-center text-white/40 mb-2">
+          <div className="w-6 h-6 border-2 border-white/20 border-t-white/60 rounded-full animate-spin mx-auto mb-2" />
+          <p className="text-sm">加载中...</p>
+        </div>
+        <ThreadListSkeleton />
       </div>
     );
   }
@@ -75,7 +120,15 @@ export default function ThreadList({
               ? 'bg-white/10 text-white'
               : 'text-white/60 hover:bg-white/5 hover:text-white/80'
           }`}
-          onClick={() => onSelectThread(thread.id)}
+          onClick={(e) => {
+            // 如果点击的是删除按钮或其子元素，不触发选择 Thread
+            if ((e.target as HTMLElement).closest('button[title="删除对话"]')) {
+              return;
+            }
+            onSelectThread(thread.id);
+          }}
+          onMouseEnter={() => handleMouseEnter(thread.id)}
+          onMouseLeave={() => handleMouseLeave(thread.id)}
         >
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1 min-w-0">
@@ -85,7 +138,7 @@ export default function ThreadList({
             <div className="flex items-center gap-2 shrink-0">
               <div className="flex items-center gap-1 text-xs text-white/30">
                 <Clock className="w-3 h-3" />
-                <span className="hidden md:inline">
+                <span className="hidden sm:inline">
                   {formatDistanceToNow(new Date(thread.updatedAt), {
                     addSuffix: true,
                     locale: zhCN,
@@ -93,11 +146,16 @@ export default function ThreadList({
                 </span>
               </div>
               <button
-                onClick={(e) => handleDelete(e, thread.id)}
-                className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-white/10 rounded"
+                onClick={(e) => {
+                  console.log('[ThreadList] Delete button clicked for thread:', thread.id);
+                  handleDelete(e, thread.id);
+                }}
+                disabled={isDeleting}
+                className="opacity-60 group-hover:opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity p-1 hover:bg-white/10 rounded active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed relative z-10"
                 title="删除对话"
+                type="button"
               >
-                <Trash2 className="w-3.5 h-3.5 text-white/40 hover:text-white/60" />
+                <Trash2 className={`w-3.5 h-3.5 text-white/40 hover:text-white/60 ${isDeleting ? 'animate-pulse' : ''}`} />
               </button>
             </div>
           </div>

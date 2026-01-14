@@ -12,6 +12,13 @@ html, body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Mobile safe area support */
+@supports (padding: max(0px)) {
+  .safe-area-inset-bottom {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+}
+
 #__next {
   height: 100%;
   background-color: #050607;

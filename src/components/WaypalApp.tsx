@@ -8,10 +8,12 @@ import DarkComparisonTable from './DarkComparisonTable';
 import VideoTourList from './VideoTourList';
 import VideoModal from './VideoModal';
 import ProfileSidebar from './ProfileSidebar';
+import Sidebar from './Sidebar';
 import LoginButton from './auth/LoginButton';
 import { compareHotel, sendMessageToAgent, parseEvaluationReply, getBookingStrategy } from '@/api/agentApi';
-import { useThread } from '@/hooks/useThread';
+import { useThreadQuery } from '@/hooks/useThreadQuery';
 import { useAuth } from '@/hooks/useAuth';
+import { useQueryClient } from '@tanstack/react-query';
 
 const getLocalDateString = (date: Date) => {
   const offset = date.getTimezoneOffset();
@@ -64,32 +66,113 @@ export default function WaypalApp() {
   const scrollRef = useRef<HTMLDivElement>(null);
   
   // Thread 管理
-  const { createThread, saveMessage, loadThread, updateThreadContext, currentThreadId, setCurrentThreadId } = useThread();
+  const [currentThreadId, setCurrentThreadId] = useState<string | null>(null);
+  const queryClient = useQueryClient();
   const { isAuthenticated } = useAuth();
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  
+  // 使用 React Query 管理 Thread 数据
+  const threadQuery = useThreadQuery(currentThreadId);
 
-  // 处理 Thread 切换
+  // 处理 Thread 切换 - 从历史记录加载，不重新查价
   const handleSelectThread = async (threadId: string) => {
     if (threadId === currentThreadId) return;
     
+    // 立即清空旧消息，显示加载状态
+    setMessages([]);
     setCurrentThreadId(threadId);
     setIsStarted(true);
+    setIsLoading(true);
     
-    // 加载 Thread 消息
-    const messages = await loadThread(threadId);
-    if (messages && Array.isArray(messages)) {
-      // 转换数据库消息格式为前端消息格式
-      const convertedMessages: Message[] = messages.map((msg: any) => ({
-        id: msg.id,
-        role: msg.role as 'user' | 'assistant',
-        content: msg.content,
-        timestamp: new Date(msg.createdAt).getTime(),
-        // 如果有 metadata，尝试解析 comparisonData
-        ...(msg.metadata?.comparisonData && {
-          type: 'comparison',
-          comparisonData: msg.metadata.comparisonData,
-        }),
-      }));
-      setMessages(convertedMessages);
+    try {
+      // 预取 Thread 数据（如果还没有缓存）
+      await queryClient.prefetchQuery({
+        queryKey: ['thread', threadId],
+        queryFn: async () => {
+          const response = await fetch(`/api/threads/${threadId}`);
+          if (!response.ok) throw new Error('Failed to load thread');
+          return response.json();
+        },
+      });
+      
+      await queryClient.prefetchQuery({
+        queryKey: ['thread-messages', threadId],
+        queryFn: async () => {
+          const response = await fetch(`/api/threads/${threadId}/messages`);
+          if (!response.ok) throw new Error('Failed to load messages');
+          return response.json();
+        },
+      });
+      
+      // 等待数据加载完成
+      const [thread, messages] = await Promise.all([
+        queryClient.ensureQueryData<{ id: string; hotelName?: string; checkIn?: string; checkOut?: string; hotelId?: string | null; metadata?: Record<string, any>; updatedAt: string }>({ queryKey: ['thread', threadId] }),
+        queryClient.ensureQueryData<Array<{ id: string; role: string; content: string; createdAt: string; metadata?: Record<string, any> }>>({ queryKey: ['thread-messages', threadId] }),
+      ]);
+      
+      if (thread && messages && Array.isArray(messages)) {
+        // 恢复酒店信息
+        if (thread.hotelName) {
+          setHotelName(thread.hotelName);
+        }
+        if (thread.checkIn) {
+          setStartDate(thread.checkIn);
+        }
+        if (thread.checkOut) {
+          setEndDate(thread.checkOut);
+        }
+        if (thread.hotelId) {
+          setCurrentHotelId(parseInt(thread.hotelId) || null);
+        }
+        
+        // 转换数据库消息格式为前端消息格式
+        const convertedMessages: Message[] = messages.map((msg: any) => {
+          const baseMessage: Message = {
+            id: msg.id,
+            role: msg.role as 'user' | 'assistant',
+            content: msg.content,
+            timestamp: new Date(msg.createdAt).getTime(),
+          };
+          
+          // 如果有 metadata，尝试解析 comparisonData
+          if (msg.metadata?.comparisonData) {
+            return {
+              ...baseMessage,
+              type: 'comparison',
+              comparisonData: msg.metadata.comparisonData,
+            };
+          }
+          
+          return baseMessage;
+        });
+        
+        // 如果 Thread metadata 中有比价数据，但没有对应的消息，创建一个显示消息
+        if (thread.metadata?.comparisonData && !convertedMessages.some(m => m.type === 'comparison')) {
+          convertedMessages.push({
+            id: 'comparison-snapshot',
+            role: 'assistant',
+            type: 'comparison',
+            content: '已为您整理实时极惠方案',
+            comparisonData: thread.metadata.comparisonData,
+            timestamp: new Date(thread.updatedAt).getTime(),
+          });
+        }
+        
+        setMessages(convertedMessages);
+      } else {
+        setMessages([]);
+      }
+    } catch (error: any) {
+      console.error('Failed to load thread:', error);
+      const errorMessage: Message = {
+        id: 'error',
+        role: 'assistant',
+        content: '加载对话失败，请稍后重试',
+        timestamp: Date.now()
+      };
+      setMessages([errorMessage]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -99,7 +182,15 @@ export default function WaypalApp() {
     setIsStarted(false);
     setMessages([]);
     setHotelName('');
+    setInputValue('');
     setDynamicSuggestions([]);
+    // 重置日期和人数
+    setStartDate(getLocalDateString(new Date()));
+    setEndDate(getLocalDateString(new Date(Date.now() + 86400000)));
+    setRooms(1);
+    setAdults(2);
+    setChildren(0);
+    // React Query 会自动刷新列表
   };
 
   const quickActions = useMemo(() => [
@@ -140,13 +231,19 @@ export default function WaypalApp() {
       // 创建 Thread（如果用户已登录）
       let threadId = currentThreadId;
       if (isAuthenticated && !threadId) {
-        threadId = await createThread({
+        const newThread = await threadQuery.createThread({
           hotelName,
           hotelId: currentHotelId?.toString(),
           checkIn: startDate,
           checkOut: endDate,
           metadata: {},
-        }) || null;
+        });
+        threadId = newThread?.id || null;
+        
+        // 设置当前 Thread ID（React Query 会自动刷新列表）
+        if (threadId) {
+          setCurrentThreadId(threadId);
+        }
       }
       
       const welcome: Message = { 
@@ -159,7 +256,11 @@ export default function WaypalApp() {
       
       // 保存欢迎消息到数据库
       if (threadId && isAuthenticated) {
-        await saveMessage(threadId, 'assistant', welcome.content);
+        await threadQuery.saveMessage({
+          threadId,
+          role: 'assistant',
+          content: welcome.content,
+        });
       }
       
       if (forcedQuery) {
@@ -180,7 +281,11 @@ export default function WaypalApp() {
     
     // 保存用户消息到数据库
     if (currentThreadId && isAuthenticated) {
-      await saveMessage(currentThreadId, 'user', text);
+      await threadQuery.saveMessage({
+        threadId: currentThreadId,
+        role: 'user',
+        content: text,
+      });
     }
     
     setInputValue('');
@@ -213,12 +318,17 @@ export default function WaypalApp() {
         };
         setMessages(prev => [...prev, assistantMessage]);
         
-        // 保存消息和更新 Thread metadata
+        // 保存消息和更新 Thread metadata（保存比价快照）
         if (currentThreadId && isAuthenticated) {
-          await saveMessage(currentThreadId, 'assistant', assistantMessage.content);
-          // 更新 Thread metadata 保存比价结果
-          await updateThreadContext(currentThreadId, {
-            metadata: { comparisonData: evaluationData },
+          await threadQuery.saveMessage({
+            threadId: currentThreadId,
+            role: 'assistant',
+            content: assistantMessage.content,
+          });
+          // 更新 Thread metadata 保存比价结果快照
+          await threadQuery.updateThread({
+            threadId: currentThreadId,
+            context: { metadata: { comparisonData: evaluationData } },
           });
         }
         
@@ -235,17 +345,35 @@ export default function WaypalApp() {
         
         // 保存消息到数据库
         if (currentThreadId && isAuthenticated) {
-          await saveMessage(currentThreadId, 'assistant', replyText);
+          await threadQuery.saveMessage({
+            threadId: currentThreadId,
+            role: 'assistant',
+            content: replyText,
+          });
         }
       }
-    } catch (e) {
-      console.error(e);
-      setMessages(prev => [...prev, { 
+    } catch (e: any) {
+      console.error('Error sending message:', e);
+      const errorMessage: Message = {
         id: `err-${Date.now()}`, 
         role: 'assistant', 
         content: "非常抱歉，实时系统响应繁忙，请稍后再试", 
         timestamp: Date.now() 
-      }]);
+      };
+      setMessages(prev => [...prev, errorMessage]);
+      
+      // 保存错误消息到数据库（如果已登录）
+      if (currentThreadId && isAuthenticated) {
+        try {
+          await threadQuery.saveMessage({
+            threadId: currentThreadId,
+            role: 'assistant',
+            content: errorMessage.content,
+          });
+        } catch (saveError) {
+          console.error('Failed to save error message:', saveError);
+        }
+      }
     } finally {
       setIsLoading(false);
     }
@@ -286,11 +414,16 @@ export default function WaypalApp() {
             };
             setMessages(prev => [...prev, assistantMessage]);
             
-            // 保存消息和更新 Thread metadata
+            // 保存消息和更新 Thread metadata（保存比价快照）
             if (currentThreadId && isAuthenticated) {
-              await saveMessage(currentThreadId, 'assistant', assistantMessage.content);
-              await updateThreadContext(currentThreadId, {
-                metadata: { comparisonData: evaluationData },
+              await threadQuery.saveMessage({
+                threadId: currentThreadId,
+                role: 'assistant',
+                content: assistantMessage.content,
+              });
+              await threadQuery.updateThread({
+                threadId: currentThreadId,
+                context: { metadata: { comparisonData: evaluationData } },
               });
             }
             
@@ -368,14 +501,28 @@ export default function WaypalApp() {
           timestamp: Date.now() 
         }]);
       }
-    } catch (error) {
-      console.error(error);
-      setMessages(prev => [...prev, { 
+    } catch (error: any) {
+      console.error('Error executing special action:', error);
+      const errorMessage: Message = {
         id: `err-${Date.now()}`, 
         role: 'assistant', 
         content: "非常抱歉，实时系统响应繁忙，请稍后再试", 
         timestamp: Date.now() 
-      }]);
+      };
+      setMessages(prev => [...prev, errorMessage]);
+      
+      // 保存错误消息到数据库（如果已登录）
+      if (currentThreadId && isAuthenticated) {
+        try {
+          await threadQuery.saveMessage({
+            threadId: currentThreadId,
+            role: 'assistant',
+            content: errorMessage.content,
+          });
+        } catch (saveError) {
+          console.error('Failed to save error message:', saveError);
+        }
+      }
     } finally {
       setIsLoading(false);
     }
@@ -384,7 +531,7 @@ export default function WaypalApp() {
   const bgUrl = "https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&q=80&w=1600";
 
   return (
-    <div className="relative h-[100dvh] w-full flex flex-col items-center overflow-hidden text-white bg-[#050607]">
+    <div className="relative h-[100dvh] w-full flex overflow-hidden text-white bg-[#050607]">
       <div className="absolute inset-0 bg-cover bg-center transition-all duration-1000 scale-105" style={{ 
         backgroundImage: `url(${bgUrl})`, 
         filter: isStarted ? 'blur(45px) brightness(0.12)' : 'blur(5px) brightness(0.4)' 
@@ -396,9 +543,26 @@ export default function WaypalApp() {
       {playingVideoId && <VideoModal videoId={playingVideoId} onClose={() => setPlayingVideoId(null)} />}
       
       <ProfileSidebar isOpen={showProfile} onClose={() => setShowProfile(false)} />
+      
+      {/* Sidebar for Thread History */}
+      <Sidebar
+        isOpen={isSidebarOpen}
+        onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
+        onNewChat={handleNewChat}
+        onSelectThread={handleSelectThread}
+        currentThreadId={currentThreadId}
+        locale="zh"
+      />
 
-      <header className="relative z-50 w-full flex items-center justify-between px-5 py-4 md:px-6 md:py-5 shrink-0">
-        <button className="w-10 h-10 flex items-center justify-center text-white/40 hover:text-white transition-all"><i className="fa-solid fa-bars text-xl"></i></button>
+      {/* Main Content Area */}
+      <div className={`flex-1 flex flex-col min-w-0 transition-all ${isSidebarOpen ? 'md:ml-0' : ''}`}>
+        <header className="relative z-50 w-full flex items-center justify-between px-5 py-4 md:px-6 md:py-5 shrink-0">
+        <button 
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          className="w-10 h-10 flex items-center justify-center text-white/40 hover:text-white transition-all"
+        >
+          <i className="fa-solid fa-bars text-xl"></i>
+        </button>
         <div className="flex items-center gap-1.5">
            <span className="text-[14px] md:text-[16px] font-black tracking-tighter uppercase opacity-90">WayPal<span className="text-[#00df81]">.ai</span></span>
         </div>
@@ -413,9 +577,9 @@ export default function WaypalApp() {
             </button>
           )}
         </div>
-      </header>
+        </header>
 
-      <main className="relative z-10 w-full max-w-2xl flex-1 flex flex-col px-5 md:px-6 overflow-hidden">
+        <main className="relative z-10 w-full max-w-2xl mx-auto flex-1 flex flex-col px-5 md:px-6 overflow-hidden">
         {!isStarted ? (
           <div className="flex-1 flex flex-col items-center justify-center animate-fade-up py-4">
             <div className="text-center mb-8 md:mb-12 space-y-4 md:space-y-6">
@@ -567,48 +731,49 @@ export default function WaypalApp() {
             <div className="h-44 md:h-56 shrink-0" />
           </div>
         )}
-      </main>
 
-      {isStarted && (
-        <div className="fixed bottom-0 z-40 w-full max-w-2xl px-5 pb-8 md:px-6 md:pb-12 pt-6 bg-gradient-to-t from-[#050607] via-[#050607]/95 to-transparent backdrop-blur-[2px]">
-          <div className="flex flex-col gap-4 md:gap-5">
-            <div className="flex items-center gap-2.5 overflow-x-auto no-scrollbar pb-1">
-                {(dynamicSuggestions.length > 0 ? dynamicSuggestions.map(s => ({ label: s, icon: <i className="fa-solid fa-sparkles"></i>, action: s })) : quickActions.filter(a => a.action)).map((a, i) => (
-                    <button 
-                        key={i} 
-                        onClick={() => a.action && handleSend(a.action)}
-                        className="flex items-center gap-3 px-6 py-2.5 rounded-full bg-white/[0.04] border border-white/10 text-[10px] md:text-[11px] font-black text-white/60 hover:bg-white/10 hover:text-white hover:border-white/20 transition-all whitespace-nowrap active:scale-95 shadow-lg shadow-black/20"
-                    >
-                        <span className="text-[#12d65e] text-[10px] opacity-80">{a.icon}</span>
-                        {a.label}
-                    </button>
-                ))}
-            </div>
+        {isStarted && (
+          <div className="fixed bottom-0 left-0 right-0 z-40 w-full max-w-2xl mx-auto px-5 pb-8 md:px-6 md:pb-12 pt-6 bg-gradient-to-t from-[#050607] via-[#050607]/95 to-transparent backdrop-blur-[2px] safe-area-inset-bottom">
+            <div className="flex flex-col gap-4 md:gap-5">
+              <div className="flex items-center gap-2.5 overflow-x-auto no-scrollbar pb-1">
+                  {(dynamicSuggestions.length > 0 ? dynamicSuggestions.map(s => ({ label: s, icon: <i className="fa-solid fa-sparkles"></i>, action: s })) : quickActions.filter(a => a.action)).map((a, i) => (
+                      <button 
+                          key={i} 
+                          onClick={() => a.action && handleSend(a.action)}
+                          className="flex items-center gap-3 px-6 py-2.5 rounded-full bg-white/[0.04] border border-white/10 text-[10px] md:text-[11px] font-black text-white/60 hover:bg-white/10 hover:text-white hover:border-white/20 transition-all whitespace-nowrap active:scale-95 shadow-lg shadow-black/20"
+                      >
+                          <span className="text-[#12d65e] text-[10px] opacity-80">{a.icon}</span>
+                          {a.label}
+                      </button>
+                  ))}
+              </div>
 
-            <div className={`relative flex items-center bg-white/[0.04] backdrop-blur-[60px] rounded-[36px] p-2 md:p-2.5 pl-5 md:pl-7 gap-3 md:gap-4 border transition-all shadow-[0_20px_80px_-15px_rgba(0,0,0,0.6)] ${isInputFocused ? 'border-white/20 ring-1 ring-white/10' : 'border-white/10'}`}>
-                <button className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center text-white/20 hover:text-white/60 transition-all active:scale-90 bg-white/5 rounded-full">
-                  <i className="fa-solid fa-plus text-sm md:text-base"></i>
-                </button>
-                <input 
-                    value={inputValue} 
-                    onChange={e => setInputValue(e.target.value)} 
-                    onKeyDown={e => e.key === 'Enter' && handleSend()} 
-                    onFocus={() => setIsInputFocused(true)}
-                    onBlur={() => setIsInputFocused(false)}
-                    placeholder="咨询详情或预定方案..." 
-                    className="flex-1 bg-transparent border-none outline-none text-white placeholder-white/20 py-3 md:py-4 text-[14px] md:text-[16px] font-medium tracking-tight" 
-                />
-                <button 
-                    onClick={() => handleSend()} 
-                    disabled={!inputValue.trim()}
-                    className={`w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center transition-all active:scale-90 shrink-0 shadow-2xl ${inputValue.trim() ? 'bg-[#12d65e] text-black shadow-[#12d65e]/30 scale-100' : 'bg-white/5 text-white/10 scale-95 cursor-not-allowed'}`}
-                >
-                    <i className="fa-solid fa-arrow-up text-lg md:text-xl"></i>
-                </button>
+              <div className={`relative flex items-center bg-white/[0.04] backdrop-blur-[60px] rounded-[36px] p-2 md:p-2.5 pl-5 md:pl-7 gap-3 md:gap-4 border transition-all shadow-[0_20px_80px_-15px_rgba(0,0,0,0.6)] ${isInputFocused ? 'border-white/20 ring-1 ring-white/10' : 'border-white/10'}`}>
+                  <button className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center text-white/20 hover:text-white/60 transition-all active:scale-90 bg-white/5 rounded-full">
+                    <i className="fa-solid fa-plus text-sm md:text-base"></i>
+                  </button>
+                  <input 
+                      value={inputValue} 
+                      onChange={e => setInputValue(e.target.value)} 
+                      onKeyDown={e => e.key === 'Enter' && handleSend()} 
+                      onFocus={() => setIsInputFocused(true)}
+                      onBlur={() => setIsInputFocused(false)}
+                      placeholder="咨询详情或预定方案..." 
+                      className="flex-1 bg-transparent border-none outline-none text-white placeholder-white/20 py-3 md:py-4 text-[14px] md:text-[16px] font-medium tracking-tight" 
+                  />
+                  <button 
+                      onClick={() => handleSend()} 
+                      disabled={!inputValue.trim()}
+                      className={`w-10 h-10 md:w-12 md:h-12 rounded-full flex items-center justify-center transition-all active:scale-90 shrink-0 shadow-2xl ${inputValue.trim() ? 'bg-[#12d65e] text-black shadow-[#12d65e]/30 scale-100' : 'bg-white/5 text-white/10 scale-95 cursor-not-allowed'}`}
+                  >
+                      <i className="fa-solid fa-arrow-up text-lg md:text-xl"></i>
+                  </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </main>
+      </div>
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import ThreadList from './Sidebar/ThreadList';
 import LoginButton from './auth/LoginButton';
 import { useAuth } from '@/hooks/useAuth';
+// Removed useThreadList - now using React Query
 
 interface SidebarProps {
   isOpen: boolean;
@@ -73,6 +74,7 @@ export default function Sidebar({
             w-64 bg-[#0a0b0d] border-r border-white/5
             flex flex-col flex-shrink-0
             ${isMobile ? 'shadow-2xl' : ''}
+            h-full
           `}
         >
             {/* Header with Logo */}
@@ -113,6 +115,13 @@ export default function Sidebar({
                 <ThreadList
                   onSelectThread={onSelectThread}
                   currentThreadId={currentThreadId}
+                  onDeleteThread={async (threadId) => {
+                    // 如果删除的是当前 Thread，清空并重置
+                    if (threadId === currentThreadId) {
+                      onNewChat();
+                    }
+                    // React Query 会在 useThreadListQuery 中处理删除和乐观更新
+                  }}
                 />
               ) : (
                 <div className="p-4 text-center text-white/40">

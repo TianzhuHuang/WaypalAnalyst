@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { threads, type NewThread } from '@/lib/db/schema';
-import { eq, desc } from 'drizzle-orm';
+import { eq, desc, gte, and } from 'drizzle-orm';
 
 // 强制动态渲染，避免构建时收集数据
 export const dynamic = 'force-dynamic';
@@ -61,12 +61,22 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // 获取最近7天的 Thread（按 updatedAt 筛选）
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    sevenDaysAgo.setHours(0, 0, 0, 0);
+    
     const userThreads = await db
       .select()
       .from(threads)
-      .where(eq(threads.userId, session.user.id))
+      .where(
+        and(
+          eq(threads.userId, session.user.id),
+          gte(threads.updatedAt, sevenDaysAgo)
+        )
+      )
       .orderBy(desc(threads.updatedAt))
-      .limit(50); // 最近 50 条
+      .limit(50); // 最多 50 条
 
     return NextResponse.json(userThreads);
   } catch (error: any) {
