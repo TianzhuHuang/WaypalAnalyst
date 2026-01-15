@@ -268,11 +268,21 @@ export default function WaypalApp() {
       
       // 保存欢迎消息到数据库
       if (threadId && isAuthenticated) {
-        await threadQuery.saveMessage({
-          threadId,
-          role: 'assistant',
-          content: welcome.content,
-        });
+        try {
+          await threadQuery.saveMessage({
+            threadId,
+            role: 'assistant',
+            content: welcome.content,
+          });
+          console.log('[WaypalApp] Welcome message saved successfully');
+        } catch (saveError: any) {
+          console.error('[WaypalApp] Failed to save welcome message:', {
+            error: saveError.message,
+            threadId,
+            isAuthenticated,
+          });
+          // 不阻止用户继续使用，但记录错误
+        }
       }
       
       if (forcedQuery) {
@@ -293,10 +303,26 @@ export default function WaypalApp() {
     
     // 保存用户消息到数据库
     if (currentThreadId && isAuthenticated) {
-      await threadQuery.saveMessage({
-        threadId: currentThreadId,
-        role: 'user',
-        content: text,
+      try {
+        await threadQuery.saveMessage({
+          threadId: currentThreadId,
+          role: 'user',
+          content: text,
+        });
+        console.log('[WaypalApp] User message saved successfully');
+      } catch (saveError: any) {
+        console.error('[WaypalApp] Failed to save user message:', {
+          error: saveError.message,
+          threadId: currentThreadId,
+          isAuthenticated,
+          messageLength: text.length,
+        });
+        // 不阻止用户继续使用，但记录错误
+      }
+    } else {
+      console.warn('[WaypalApp] Skipping message save:', {
+        hasThreadId: !!currentThreadId,
+        isAuthenticated,
       });
     }
     
@@ -332,16 +358,24 @@ export default function WaypalApp() {
         
         // 保存消息和更新 Thread metadata（保存比价快照）
         if (currentThreadId && isAuthenticated) {
-          await threadQuery.saveMessage({
-            threadId: currentThreadId,
-            role: 'assistant',
-            content: assistantMessage.content,
-          });
-          // 更新 Thread metadata 保存比价结果快照
-          await threadQuery.updateThread({
-            threadId: currentThreadId,
-            context: { metadata: { comparisonData: evaluationData } },
-          });
+          try {
+            await threadQuery.saveMessage({
+              threadId: currentThreadId,
+              role: 'assistant',
+              content: assistantMessage.content,
+            });
+            // 更新 Thread metadata 保存比价结果快照
+            await threadQuery.updateThread({
+              threadId: currentThreadId,
+              context: { metadata: { comparisonData: evaluationData } },
+            });
+            console.log('[WaypalApp] Comparison message and metadata saved successfully');
+          } catch (saveError: any) {
+            console.error('[WaypalApp] Failed to save comparison message:', {
+              error: saveError.message,
+              threadId: currentThreadId,
+            });
+          }
         }
         
         setDynamicSuggestions(["分析具体礼遇", "查看房型实拍", "立即预订最佳方案"]);
@@ -357,11 +391,19 @@ export default function WaypalApp() {
         
         // 保存消息到数据库
         if (currentThreadId && isAuthenticated) {
-          await threadQuery.saveMessage({
-            threadId: currentThreadId,
-            role: 'assistant',
-            content: replyText,
-          });
+          try {
+            await threadQuery.saveMessage({
+              threadId: currentThreadId,
+              role: 'assistant',
+              content: replyText,
+            });
+            console.log('[WaypalApp] Assistant message saved successfully');
+          } catch (saveError: any) {
+            console.error('[WaypalApp] Failed to save assistant message:', {
+              error: saveError.message,
+              threadId: currentThreadId,
+            });
+          }
         }
       }
     } catch (e: any) {
@@ -428,15 +470,23 @@ export default function WaypalApp() {
             
             // 保存消息和更新 Thread metadata（保存比价快照）
             if (currentThreadId && isAuthenticated) {
-              await threadQuery.saveMessage({
-                threadId: currentThreadId,
-                role: 'assistant',
-                content: assistantMessage.content,
-              });
-              await threadQuery.updateThread({
-                threadId: currentThreadId,
-                context: { metadata: { comparisonData: evaluationData } },
-              });
+              try {
+                await threadQuery.saveMessage({
+                  threadId: currentThreadId,
+                  role: 'assistant',
+                  content: assistantMessage.content,
+                });
+                await threadQuery.updateThread({
+                  threadId: currentThreadId,
+                  context: { metadata: { comparisonData: evaluationData } },
+                });
+                console.log('[WaypalApp] Special action message and metadata saved successfully');
+              } catch (saveError: any) {
+                console.error('[WaypalApp] Failed to save special action message:', {
+                  error: saveError.message,
+                  threadId: currentThreadId,
+                });
+              }
             }
             
             setDynamicSuggestions(["分析具体礼遇", "查看房型实拍", "立即预订最佳方案", "预定方案推荐"]);

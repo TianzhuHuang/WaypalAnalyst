@@ -101,22 +101,48 @@ export function useThreadQuery(threadId: string | null) {
   // 保存消息
   const saveMessageMutation = useMutation({
     mutationFn: async ({ threadId, role, content }: { threadId: string; role: 'user' | 'assistant' | 'system'; content: string }) => {
+      console.log('[useThreadQuery] Saving message:', {
+        threadId,
+        role,
+        contentLength: content?.length || 0,
+        hasSession: !!session,
+        userId: session?.user?.id || 'NONE',
+      });
+      
       const response = await fetch(`/api/threads/${threadId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ role, content }),
       });
+      
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to save message');
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('[useThreadQuery] Failed to save message:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorData,
+          threadId,
+          role,
+        });
+        throw new Error(errorData.error || errorData.details || `Failed to save message: ${response.status} ${response.statusText}`);
       }
-      return response.json();
+      
+      const result = await response.json();
+      console.log('[useThreadQuery] Message saved successfully:', result.id);
+      return result;
     },
     onSuccess: (_, variables) => {
+      console.log('[useThreadQuery] Message save success, invalidating queries');
       // 刷新消息列表
       queryClient.invalidateQueries({ queryKey: ['thread-messages', variables.threadId] });
       // 刷新 Thread 列表（更新 updatedAt）
       queryClient.invalidateQueries({ queryKey: ['threads', session?.user?.id] });
+    },
+    onError: (error: any) => {
+      console.error('[useThreadQuery] Message save mutation error:', {
+        error: error.message,
+        stack: error.stack,
+      });
     },
   });
 
