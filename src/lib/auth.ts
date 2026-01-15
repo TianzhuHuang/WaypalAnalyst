@@ -85,6 +85,42 @@ export const authOptions: NextAuthConfig = {
   // Trust host for NextAuth v5 (required for localhost)
   trustHost: true,
   callbacks: {
+    async jwt({ token, user, account }) {
+      // 在 JWT token 中存储用户 ID
+      // 优先使用 signIn callback 中设置的 user.id（如果数据库连接成功）
+      if (user?.id) {
+        token.userId = user.id;
+        console.log('[Auth] JWT callback: User ID from signIn callback:', user.id);
+        return token;
+      }
+      
+      // 如果 signIn callback 中没有设置（可能数据库连接失败），尝试从数据库查询
+      if (user?.email) {
+        try {
+          const dbUser = await db
+            .select()
+            .from(profiles)
+            .where(eq(profiles.email, user.email))
+            .limit(1);
+          
+          if (dbUser.length > 0) {
+            token.userId = dbUser[0].id;
+            console.log('[Auth] JWT callback: User ID fetched from DB:', dbUser[0].id);
+          } else {
+            console.warn('[Auth] JWT callback: User not found in database:', user.email);
+          }
+        } catch (error: any) {
+          console.error('[Auth] JWT callback: Error fetching user ID:', {
+            error: error.message,
+            code: error.code,
+            email: user.email,
+          });
+          // 即使数据库查询失败，也继续（session callback 会尝试再次查询）
+        }
+      }
+      
+      return token;
+    },
     async signIn({ user, account, profile }) {
       // #region agent log
       fetch('http://127.0.0.1:7243/ingest/1c36209a-603e-4d99-af36-1961247a84af',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/auth.ts:32',message:'signIn callback entry',data:{provider:account?.provider,hasEmail:!!user.email,email:user.email?.substring(0,10)||'none'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'E'})}).catch(()=>{});
@@ -109,11 +145,16 @@ export const authOptions: NextAuthConfig = {
             // #region agent log
             fetch('http://127.0.0.1:7243/ingest/1c36209a-603e-4d99-af36-1961247a84af',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/auth.ts:45',message:'Creating new user',data:{email:user.email?.substring(0,10)||'none'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
             // #endregion
-            await db.insert(profiles).values({
+            const [newUser] = await db.insert(profiles).values({
               email: user.email,
               fullName: user.name || null,
               avatarUrl: user.image || null,
-            });
+            }).returning();
+            // 将用户 ID 存储到 user 对象中，供 JWT callback 使用
+            if (newUser?.id) {
+              user.id = newUser.id;
+              console.log('[Auth] SignIn callback: New user created with ID:', newUser.id);
+            }
             // #region agent log
             fetch('http://127.0.0.1:7243/ingest/1c36209a-603e-4d99-af36-1961247a84af',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/auth.ts:51',message:'User created successfully',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
             // #endregion
@@ -130,6 +171,11 @@ export const authOptions: NextAuthConfig = {
                 updatedAt: new Date(),
               })
               .where(eq(profiles.email, user.email));
+            // 将用户 ID 存储到 user 对象中
+            if (existingUser[0]?.id) {
+              user.id = existingUser[0].id;
+              console.log('[Auth] SignIn callback: Existing user ID:', existingUser[0].id);
+            }
             // #region agent log
             fetch('http://127.0.0.1:7243/ingest/1c36209a-603e-4d99-af36-1961247a84af',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/auth.ts:63',message:'User updated successfully',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
             // #endregion
@@ -149,6 +195,14 @@ export const authOptions: NextAuthConfig = {
     },
     async session({ session, token }) {
       // 将用户 ID 添加到 session
+      // 优先从 token 中获取（在 JWT callback 中已设置）
+      if (token?.userId) {
+        session.user.id = token.userId as string;
+        console.log('[Auth] Session callback: User ID from token:', token.userId);
+        return session;
+      }
+
+      // 如果 token 中没有，尝试从数据库获取
       if (session.user?.email) {
         try {
           const user = await db
@@ -159,9 +213,26 @@ export const authOptions: NextAuthConfig = {
 
           if (user.length > 0) {
             session.user.id = user[0].id;
+            console.log('[Auth] Session callback: User ID fetched from DB:', user[0].id);
+          } else {
+            console.warn('[Auth] Session callback: User not found in database:', session.user.email);
           }
-        } catch (error) {
-          console.error('Error fetching user ID:', error);
+        } catch (error: any) {
+          // 数据库连接失败时的 fallback
+          console.error('[Auth] Error fetching user ID from database:', {
+            error: error.message,
+            code: error.code,
+            email: session.user.email,
+          });
+          
+          // 如果 token 中有 sub，尝试使用它（虽然通常不是我们的用户 ID）
+          if (token?.sub) {
+            console.warn('[Auth] Session callback: Using token.sub as last resort:', token.sub);
+            session.user.id = token.sub as string;
+          } else {
+            console.error('[Auth] Session callback: No user ID available! Database connection failed and no token fallback.');
+            // 注意：这会导致 401 错误，但至少我们知道问题所在
+          }
         }
       }
       return session;

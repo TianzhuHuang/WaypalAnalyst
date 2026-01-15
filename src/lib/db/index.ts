@@ -15,10 +15,32 @@ function getDb() {
   }
 
   if (!client) {
+    // 检测是否是 Unix socket 连接（Cloud SQL）
+    const isUnixSocket = connectionString.includes('/cloudsql/') || connectionString.includes('host=/cloudsql/');
+    
+    console.log('[DB] Initializing database connection:', {
+      hasConnectionString: !!connectionString,
+      isUnixSocket,
+      connectionStringPreview: connectionString.substring(0, 50) + '...',
+    });
+
     client = postgres(connectionString, {
       max: 10, // 最大连接数
       idle_timeout: 20, // 空闲连接超时（秒）
-      connect_timeout: 10, // 连接超时（秒）
+      connect_timeout: isUnixSocket ? 30 : 10, // Unix socket 连接可能需要更长时间
+      // 对于 Cloud SQL，增加重试次数
+      max_lifetime: 60 * 30, // 30 分钟
+    });
+
+    // 测试连接
+    client`SELECT 1`.then(() => {
+      console.log('[DB] Database connection test successful');
+    }).catch((error: any) => {
+      console.error('[DB] Database connection test failed:', {
+        error: error.message,
+        code: error.code,
+        errno: error.errno,
+      });
     });
   }
 
