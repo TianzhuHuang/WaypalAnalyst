@@ -43,9 +43,15 @@ export async function POST(request: NextRequest) {
       .values(threadData)
       .returning();
 
+    console.log('[API] Thread created successfully:', newThread.id);
     return NextResponse.json(newThread);
   } catch (error: any) {
-    console.error('Error creating thread:', error);
+    console.error('[API] Error creating thread:', error);
+    console.error('[API] Error details:', {
+      message: error.message,
+      stack: error.stack,
+      databaseUrl: process.env.DATABASE_URL ? 'SET' : 'NOT SET',
+    });
     return NextResponse.json(
       { error: 'Failed to create thread', details: error.message },
       { status: 500 }

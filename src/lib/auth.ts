@@ -28,8 +28,8 @@ fetch('http://127.0.0.1:7243/ingest/1c36209a-603e-4d99-af36-1961247a84af',{metho
 export const authOptions: NextAuthConfig = {
   providers: [
     GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      clientId: process.env.GOOGLE_CLIENT_ID || '',
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
     }),
     // 开发环境：添加 Credentials provider 用于 Mock 登录
     ...(process.env.NODE_ENV !== 'production' ? [
@@ -167,9 +167,10 @@ export const authOptions: NextAuthConfig = {
       return session;
     },
   },
-  pages: {
-    signIn: '/auth/signin',
-  },
+  // 移除自定义 signIn 页面，使用默认页面
+  // pages: {
+  //   signIn: '/auth/signin',
+  // },
   secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET,
 };
 

@@ -23,8 +23,12 @@ steps:
       - '--allow-unauthenticated'
       - '--port'
       - '3000'
-      - '--set-env-vars'
+      - '--update-env-vars'
       - 'NODE_ENV=production'
+      - '--set-secrets'
+      - 'DATABASE_URL=DATABASE_URL:latest,AUTH_SECRET=AUTH_SECRET:latest,GOOGLE_CLIENT_ID=GOOGLE_CLIENT_ID:latest,GOOGLE_CLIENT_SECRET=GOOGLE_CLIENT_SECRET:latest'
+      - '--update-env-vars'
+      - 'AUTH_URL=https://hotel.waypal.ai,AUTH_TRUST_HOST=true'
 
 images:
   - 'europe-west1-docker.pkg.dev/$PROJECT_ID/waypalanalyst/waypalanalyst:$SHORT_SHA'

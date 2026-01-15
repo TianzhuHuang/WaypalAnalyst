@@ -231,19 +231,31 @@ export default function WaypalApp() {
       // 创建 Thread（如果用户已登录）
       let threadId = currentThreadId;
       if (isAuthenticated && !threadId) {
-        const newThread = await threadQuery.createThread({
-          hotelName,
-          hotelId: currentHotelId?.toString(),
-          checkIn: startDate,
-          checkOut: endDate,
-          metadata: {},
-        });
-        threadId = newThread?.id || null;
-        
-        // 设置当前 Thread ID（React Query 会自动刷新列表）
-        if (threadId) {
-          setCurrentThreadId(threadId);
+        try {
+          console.log('[WaypalApp] Creating thread for:', hotelName);
+          const newThread = await threadQuery.createThread({
+            hotelName,
+            hotelId: currentHotelId?.toString(),
+            checkIn: startDate,
+            checkOut: endDate,
+            metadata: {},
+          });
+          threadId = newThread?.id || null;
+          
+          console.log('[WaypalApp] Thread created:', threadId);
+          
+          // 设置当前 Thread ID（React Query 会自动刷新列表）
+          if (threadId) {
+            setCurrentThreadId(threadId);
+          } else {
+            console.error('[WaypalApp] Thread creation returned null ID');
+          }
+        } catch (error) {
+          console.error('[WaypalApp] Failed to create thread:', error);
+          // 即使创建失败，也继续显示欢迎消息（但不会保存到数据库）
         }
+      } else if (!isAuthenticated) {
+        console.warn('[WaypalApp] User not authenticated, skipping thread creation');
       }
       
       const welcome: Message = { 
