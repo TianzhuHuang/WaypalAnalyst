@@ -10,15 +10,69 @@ export const dynamic = 'force-dynamic';
 // 创建新 Thread
 export async function POST(request: NextRequest) {
   try {
+    console.log('[API] POST /api/threads - Starting');
+    
+    // 检查数据库连接
+    const hasDbUrl = !!process.env.DATABASE_URL;
+    console.log('[API] Database URL status:', hasDbUrl ? 'SET' : 'NOT SET');
+    
+    // 检查认证环境变量
+    console.log('[API] Auth environment variables:', {
+      hasAuthSecret: !!process.env.AUTH_SECRET,
+      hasAuthUrl: !!process.env.AUTH_URL,
+      authUrl: process.env.AUTH_URL || 'NOT SET',
+      hasTrustHost: !!process.env.AUTH_TRUST_HOST,
+      trustHost: process.env.AUTH_TRUST_HOST || 'NOT SET',
+    });
+    
     const session = await auth();
+    console.log('[API] Session status:', {
+      hasSession: !!session,
+      hasUser: !!session?.user,
+      hasUserId: !!session?.user?.id,
+      userId: session?.user?.id ? '***' : 'NONE',
+      userEmail: session?.user?.email ? session.user.email.substring(0, 10) + '***' : 'NONE',
+    });
+    
     if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      console.error('[API] Unauthorized: No session or user ID', {
+        hasSession: !!session,
+        hasUser: !!session?.user,
+        hasUserId: !!session?.user?.id,
+        requestHeaders: {
+          cookie: request.headers.get('cookie') ? 'PRESENT' : 'MISSING',
+          authorization: request.headers.get('authorization') ? 'PRESENT' : 'MISSING',
+        },
+      });
+      return NextResponse.json(
+        { 
+          error: 'Unauthorized', 
+          details: 'No valid session found. Please ensure you are logged in.',
+          debug: {
+            hasSession: !!session,
+            hasUser: !!session?.user,
+            hasUserId: !!session?.user?.id,
+            hasAuthSecret: !!process.env.AUTH_SECRET,
+            hasAuthUrl: !!process.env.AUTH_URL,
+            authUrl: process.env.AUTH_URL || 'NOT SET',
+          }
+        }, 
+        { status: 401 }
+      );
     }
 
     const body = await request.json();
     const { hotelName, hotelId, checkIn, checkOut, metadata } = body;
+    console.log('[API] Request body:', {
+      hotelName,
+      hasHotelId: !!hotelId,
+      checkIn,
+      checkOut,
+      hasMetadata: !!metadata,
+    });
 
     if (!hotelName) {
+      console.error('[API] Missing hotelName');
       return NextResponse.json({ error: 'hotelName is required' }, { status: 400 });
     }
 

@@ -178,8 +178,36 @@ export const authOptions: NextAuthConfig = {
 let authInstance: ReturnType<typeof NextAuth> | null = null;
 
 export const auth = async () => {
+  // Log auth configuration on first call (only in production to avoid spam)
+  if (!authInstance && process.env.NODE_ENV === 'production') {
+    console.log('[Auth] Initializing NextAuth with config:', {
+      hasAuthSecret: !!process.env.AUTH_SECRET,
+      authSecretLength: process.env.AUTH_SECRET?.length || 0,
+      hasAuthUrl: !!process.env.AUTH_URL,
+      authUrl: process.env.AUTH_URL || 'NOT SET',
+      hasTrustHost: !!process.env.AUTH_TRUST_HOST,
+      trustHost: process.env.AUTH_TRUST_HOST || 'NOT SET',
+      hasGoogleClientId: !!process.env.GOOGLE_CLIENT_ID,
+      hasGoogleClientSecret: !!process.env.GOOGLE_CLIENT_SECRET,
+      nodeEnv: process.env.NODE_ENV,
+    });
+  }
+  
   if (!authInstance) {
     authInstance = NextAuth(authOptions);
   }
-  return await authInstance.auth();
+  
+  const authResult = await authInstance.auth();
+  
+  // Log session status in production (only when session is missing to avoid spam)
+  if (process.env.NODE_ENV === 'production' && !authResult?.user?.id) {
+    console.warn('[Auth] No valid session found:', {
+      hasSession: !!authResult,
+      hasUser: !!authResult?.user,
+      hasUserId: !!authResult?.user?.id,
+      userEmail: authResult?.user?.email || 'NONE',
+    });
+  }
+  
+  return authResult;
 };
