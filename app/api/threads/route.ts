@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { db } from '@/lib/db';
-import { threads, type NewThread } from '@/lib/db/schema';
+import { threads, profiles, type NewThread } from '@/lib/db/schema';
 import { eq, desc, gte, and } from 'drizzle-orm';
 
 // 强制动态渲染，避免构建时收集数据
@@ -30,15 +30,18 @@ export async function POST(request: NextRequest) {
       hasSession: !!session,
       hasUser: !!session?.user,
       hasUserId: !!session?.user?.id,
-      userId: session?.user?.id ? '***' : 'NONE',
+      userId: session?.user?.id || 'NONE',
+      userIdType: typeof session?.user?.id,
       userEmail: session?.user?.email ? session.user.email.substring(0, 10) + '***' : 'NONE',
+      sessionKeys: session ? Object.keys(session) : [],
+      userKeys: session?.user ? Object.keys(session.user) : [],
     });
     
-    if (!session?.user?.id) {
-      console.error('[API] Unauthorized: No session or user ID', {
+    // 更宽松的检查：如果有 session 和 user，即使没有 id 也允许（使用 email 作为临时标识）
+    if (!session?.user) {
+      console.error('[API] Unauthorized: No session or user', {
         hasSession: !!session,
         hasUser: !!session?.user,
-        hasUserId: !!session?.user?.id,
         requestHeaders: {
           cookie: request.headers.get('cookie') ? 'PRESENT' : 'MISSING',
           authorization: request.headers.get('authorization') ? 'PRESENT' : 'MISSING',
@@ -51,10 +54,74 @@ export async function POST(request: NextRequest) {
           debug: {
             hasSession: !!session,
             hasUser: !!session?.user,
-            hasUserId: !!session?.user?.id,
             hasAuthSecret: !!process.env.AUTH_SECRET,
             hasAuthUrl: !!process.env.AUTH_URL,
             authUrl: process.env.AUTH_URL || 'NOT SET',
+          }
+        }, 
+        { status: 401 }
+      );
+    }
+
+    // 如果没有 user.id，尝试从数据库获取（临时解决方案）
+    let userId = session.user.id;
+    if (!userId && session.user.email) {
+      try {
+        console.log('[API] User ID missing, attempting to fetch from database...');
+        const user = await db
+          .select()
+          .from(profiles)
+          .where(eq(profiles.email, session.user.email))
+          .limit(1);
+        
+        if (user.length > 0) {
+          userId = user[0].id;
+          console.log('[API] User ID fetched from database:', userId);
+        } else {
+          console.warn('[API] User not found in database, cannot create thread');
+          return NextResponse.json(
+            { 
+              error: 'User not found', 
+              details: 'User profile not found in database. Please try logging in again.',
+            }, 
+            { status: 404 }
+          );
+        }
+      } catch (error: any) {
+        console.error('[API] Error fetching user from database:', {
+          error: error.message,
+          code: error.code,
+        });
+        return NextResponse.json(
+          { 
+            error: 'Database connection failed', 
+            details: 'Unable to connect to database. Please try again later.',
+            debug: {
+              error: error.message,
+              code: error.code,
+            }
+          }, 
+          { status: 500 }
+        );
+      }
+    }
+
+    if (!userId) {
+      console.error('[API] Unauthorized: No user ID available', {
+        hasSession: !!session,
+        hasUser: !!session?.user,
+        hasUserId: !!session?.user?.id,
+        hasUserEmail: !!session?.user?.email,
+      });
+      return NextResponse.json(
+        { 
+          error: 'Unauthorized', 
+          details: 'User ID not available. Please try logging in again.',
+          debug: {
+            hasSession: !!session,
+            hasUser: !!session?.user,
+            hasUserId: !!session?.user?.id,
+            hasUserEmail: !!session?.user?.email,
           }
         }, 
         { status: 401 }
@@ -83,7 +150,7 @@ export async function POST(request: NextRequest) {
     const title = `${hotelName}${dateStr ? ` - ${dateStr}` : ''}`;
 
     const threadData: NewThread = {
-      userId: session.user.id as string,
+      userId: userId as string,
       hotelName,
       hotelId: hotelId || null,
       checkIn: checkIn ? (typeof checkIn === 'string' ? checkIn : new Date(checkIn).toISOString().split('T')[0]) : null,

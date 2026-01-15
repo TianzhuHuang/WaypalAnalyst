@@ -194,15 +194,30 @@ export const authOptions: NextAuthConfig = {
       return true;
     },
     async session({ session, token }) {
-      // 将用户 ID 添加到 session
-      // 优先从 token 中获取（在 JWT callback 中已设置）
+      console.log('[Auth] Session callback: Starting', {
+        hasToken: !!token,
+        hasTokenUserId: !!token?.userId,
+        hasTokenSub: !!token?.sub,
+        tokenSub: token?.sub,
+        hasSession: !!session,
+        hasSessionUser: !!session?.user,
+        hasSessionUserEmail: !!session?.user?.email,
+        sessionUserEmail: session?.user?.email?.substring(0, 10) || 'NONE',
+      });
+
+      // 确保 session.user 对象存在
+      if (!session.user) {
+        session.user = {};
+      }
+
+      // 优先从 token.userId 获取（在 JWT callback 中已设置）
       if (token?.userId) {
         session.user.id = token.userId as string;
-        console.log('[Auth] Session callback: User ID from token:', token.userId);
+        console.log('[Auth] Session callback: User ID from token.userId:', token.userId);
         return session;
       }
 
-      // 如果 token 中没有，尝试从数据库获取
+      // 如果 token.userId 没有，尝试从数据库获取
       if (session.user?.email) {
         try {
           const user = await db
@@ -214,6 +229,7 @@ export const authOptions: NextAuthConfig = {
           if (user.length > 0) {
             session.user.id = user[0].id;
             console.log('[Auth] Session callback: User ID fetched from DB:', user[0].id);
+            return session;
           } else {
             console.warn('[Auth] Session callback: User not found in database:', session.user.email);
           }
@@ -224,17 +240,24 @@ export const authOptions: NextAuthConfig = {
             code: error.code,
             email: session.user.email,
           });
-          
-          // 如果 token 中有 sub，尝试使用它（虽然通常不是我们的用户 ID）
-          if (token?.sub) {
-            console.warn('[Auth] Session callback: Using token.sub as last resort:', token.sub);
-            session.user.id = token.sub as string;
-          } else {
-            console.error('[Auth] Session callback: No user ID available! Database connection failed and no token fallback.');
-            // 注意：这会导致 401 错误，但至少我们知道问题所在
-          }
         }
       }
+
+      // 最后的 fallback：使用 token.sub（NextAuth 默认的用户标识符）
+      if (token?.sub) {
+        console.warn('[Auth] Session callback: Using token.sub as last resort fallback:', token.sub);
+        session.user.id = token.sub as string;
+        console.log('[Auth] Session callback: Set session.user.id to token.sub:', session.user.id);
+        return session;
+      }
+
+      // 如果所有方法都失败
+      console.error('[Auth] Session callback: No user ID available!', {
+        hasTokenUserId: !!token?.userId,
+        hasTokenSub: !!token?.sub,
+        hasSessionUserEmail: !!session?.user?.email,
+      });
+
       return session;
     },
   },
