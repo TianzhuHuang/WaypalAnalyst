@@ -5,6 +5,66 @@
 
 const AGENT_API_BASE_URL = process.env.NEXT_PUBLIC_AGENT_BACKEND_URL || 'https://waypal-agent-backend-266509309806.asia-east1.run.app';
 
+/**
+ * Helper function to retry fetch on 429/503 errors
+ */
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  retries = 1,
+  retryDelay = 3000
+): Promise<Response> {
+  let lastError: Error | null = null;
+  
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+      
+      // If status is 429 (Too Many Requests) or 503 (Service Unavailable), retry
+      if ((response.status === 429 || response.status === 503) && attempt < retries) {
+        console.log(`[AgentAPI] Retryable error ${response.status}, retrying in ${retryDelay}ms... (attempt ${attempt + 1}/${retries + 1})`);
+        
+        // Show user-friendly toast message (only on first retry)
+        if (attempt === 0 && typeof window !== 'undefined') {
+          // Dynamic import to avoid SSR issues
+          import('react-hot-toast').then(({ default: toast }) => {
+            toast('管家正在努力调配资源，请稍候...', {
+              icon: '⏳',
+              duration: retryDelay,
+            });
+          }).catch(() => {
+            // Toast not available, skip
+          });
+        }
+        
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+        continue;
+      }
+      
+      return response;
+    } catch (error: any) {
+      lastError = error;
+      // For network errors, don't retry (timeout and network issues are handled elsewhere)
+      if (error.name === 'AbortError' || error.message === 'Failed to fetch') {
+        throw error;
+      }
+      
+      // For other errors, retry if attempts remaining
+      if (attempt < retries) {
+        console.log(`[AgentAPI] Request error, retrying in ${retryDelay}ms... (attempt ${attempt + 1}/${retries + 1})`, error);
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+        continue;
+      }
+      
+      throw error;
+    }
+  }
+  
+  // Should not reach here, but just in case
+  throw lastError || new Error('Request failed after retries');
+}
+
 export interface AgentMessageRequest {
   user_id: string;
   message_text: string;
@@ -151,14 +211,19 @@ export async function sendMessageToAgent(
     const timeoutId = setTimeout(() => controller.abort(), 300000); // 300 second timeout (5 minutes)
     
     try {
-      const response = await fetch(`${AGENT_API_BASE_URL}/agent/message`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      const response = await fetchWithRetry(
+        `${AGENT_API_BASE_URL}/agent/message`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal,
         },
-        body: JSON.stringify(requestBody),
-        signal: controller.signal,
-      });
+        1, // Retry once on 429/503
+        3000 // 3 second delay
+      );
 
       clearTimeout(timeoutId);
       console.log('[AgentAPI] Response status:', response.status, response.statusText);
@@ -245,14 +310,19 @@ export async function compareHotel(
     const timeoutId = setTimeout(() => controller.abort(), 300000); // 300 second timeout (5 minutes)
     
     try {
-      const response = await fetch(`${AGENT_API_BASE_URL}/agent/compare`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      const response = await fetchWithRetry(
+        `${AGENT_API_BASE_URL}/agent/compare`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal,
         },
-        body: JSON.stringify(requestBody),
-        signal: controller.signal,
-      });
+        1, // Retry once on 429/503
+        3000 // 3 second delay
+      );
 
       clearTimeout(timeoutId);
       console.log('[AgentAPI] Compare response status:', response.status, response.statusText);

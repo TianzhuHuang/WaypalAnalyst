@@ -69,6 +69,8 @@ export function useThreadQuery(threadId: string | null) {
     queryKey: ['thread', threadId],
     queryFn: () => fetchThread(threadId!),
     enabled: !!threadId && !!session?.user?.id,
+    staleTime: 1000 * 60 * 5, // 5分钟内使用缓存
+    gcTime: 1000 * 60 * 10, // 10分钟后垃圾回收
   });
 
   // 获取 Thread 消息
@@ -76,6 +78,8 @@ export function useThreadQuery(threadId: string | null) {
     queryKey: ['thread-messages', threadId],
     queryFn: () => fetchThreadMessages(threadId!),
     enabled: !!threadId && !!session?.user?.id,
+    staleTime: 1000 * 60 * 5, // 5分钟内使用缓存
+    gcTime: 1000 * 60 * 10, // 10分钟后垃圾回收
   });
 
   // 创建 Thread

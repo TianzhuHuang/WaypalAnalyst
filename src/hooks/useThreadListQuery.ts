@@ -36,7 +36,8 @@ export function useThreadListQuery() {
     queryKey: ['threads', session?.user?.id],
     queryFn: fetchThreads,
     enabled: !!session?.user?.id,
-    staleTime: 1000 * 30, // 30秒内使用缓存
+    staleTime: 1000 * 60 * 5, // 5分钟内使用缓存
+    gcTime: 1000 * 60 * 10, // 10分钟后垃圾回收（原 cacheTime）
   });
 
   // 删除 Thread（乐观更新）
