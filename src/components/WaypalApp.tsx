@@ -9,7 +9,6 @@ import VideoTourList from './VideoTourList';
 import VideoModal from './VideoModal';
 import ProfileSidebar from './ProfileSidebar';
 import Sidebar from './Sidebar';
-import LoginButton from './auth/LoginButton';
 import { compareHotel, sendMessageToAgent, parseEvaluationReply, getBookingStrategy } from '@/api/agentApi';
 import { useThreadQuery } from '@/hooks/useThreadQuery';
 import { useAuth } from '@/hooks/useAuth';
@@ -628,17 +627,7 @@ export default function WaypalApp() {
         <div className="flex items-center gap-1.5">
            <span className="text-[14px] md:text-[16px] font-black tracking-tighter uppercase opacity-90">WayPal<span className="text-[#00df81]">.ai</span></span>
         </div>
-        <div className="flex items-center gap-2">
-          <LoginButton />
-          {isAuthenticated && (
-            <button 
-              onClick={() => setShowProfile(true)}
-              className="w-10 h-10 rounded-full border border-white/10 flex items-center justify-center bg-white/5 active:scale-95 transition-all hover:border-white/30"
-            >
-              <i className="fa-solid fa-user text-sm text-white/40"></i>
-            </button>
-          )}
-        </div>
+        {/* 登录按钮已移至侧边栏底部 */}
         </header>
 
         <main className="relative z-10 w-full max-w-2xl mx-auto flex-1 flex flex-col px-5 md:px-6 overflow-hidden">
@@ -685,23 +674,24 @@ export default function WaypalApp() {
                         <span className="text-[11px] text-[#00df81] font-black uppercase tracking-[0.2em] mb-2 block ml-1">目的地酒店</span>
                         <input 
                           className="w-full bg-transparent text-xl md:text-3xl font-black text-white border-none outline-none placeholder-white/5 tracking-tight" 
-                          placeholder="例如：香港瑰丽酒店" 
+                          placeholder={isAuthenticated ? "例如：香港瑰丽酒店" : "请先登录"} 
                           value={hotelName} 
                           onChange={e => setHotelName(e.target.value)} 
-                          onKeyDown={e => e.key === 'Enter' && hotelName.trim() && handleSend("全网找优惠")}
+                          onKeyDown={e => e.key === 'Enter' && hotelName.trim() && isAuthenticated && handleSend("全网找优惠")}
+                          disabled={!isAuthenticated}
                         />
                       </div>
                     </div>
                     <button 
-                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleSend("全网找优惠"); }} 
-                        disabled={!hotelName.trim()}
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); isAuthenticated && handleSend("全网找优惠"); }} 
+                        disabled={!hotelName.trim() || !isAuthenticated}
                         className={`px-6 md:px-8 py-3 md:py-4 rounded-full flex items-center justify-center text-black shadow-[0_20px_40px_-10px_rgba(18,214,94,0.4)] active:scale-95 transition-all shrink-0 font-black text-sm md:text-base tracking-tight ${
-                          hotelName.trim() 
+                          hotelName.trim() && isAuthenticated
                             ? 'bg-[#12d65e] hover:bg-[#15e064] cursor-pointer' 
                             : 'bg-white/10 text-white/30 cursor-not-allowed'
                         }`}
                     >
-                        全网查价格
+                        {!isAuthenticated ? '请先登录' : '全网查价格'}
                     </button>
                   </div>
                   
