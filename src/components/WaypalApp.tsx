@@ -9,8 +9,11 @@ import VideoTourList from './VideoTourList';
 import VideoModal from './VideoModal';
 import ProfileSidebar from './ProfileSidebar';
 import Sidebar from './Sidebar';
+import DeepAnalysisButton from './Analyst/DeepAnalysisButton';
+import ExpertAnalysisCard from './Analyst/ExpertAnalysisCard';
 import { compareHotel, sendMessageToAgent, parseEvaluationReply, getBookingStrategy } from '@/api/agentApi';
 import { useThreadQuery } from '@/hooks/useThreadQuery';
+import { useComparisonContext } from '@/hooks/useComparisonContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -67,11 +70,14 @@ export default function WaypalApp() {
   // Thread 管理
   const [currentThreadId, setCurrentThreadId] = useState<string | null>(null);
   const queryClient = useQueryClient();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   
   // 使用 React Query 管理 Thread 数据
   const threadQuery = useThreadQuery(currentThreadId);
+  
+  // 获取比价上下文
+  const { context: comparisonContext, isExpired: isContextExpired } = useComparisonContext(currentThreadId);
 
   // 处理 Thread 切换 - 从历史记录加载，不重新查价
   const handleSelectThread = async (threadId: string) => {
@@ -340,8 +346,8 @@ export default function WaypalApp() {
       }
       
       // Use the existing API
-      const userId = "waypal_user_" + Date.now();
-      const res = await sendMessageToAgent(text, userId);
+      const userId = user?.id || "waypal_user_" + Date.now();
+      const res = await sendMessageToAgent(text, userId, comparisonContext);
       
       if (res.reply_type === 'evaluation' && res.reply) {
         const evaluationData = parseEvaluationReply(res.reply);
@@ -427,6 +433,72 @@ export default function WaypalApp() {
           console.error('Failed to save error message:', saveError);
         }
       }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // 深度解析处理函数
+  const handleDeepAnalysis = async () => {
+    if (!comparisonContext || !currentThreadId) return;
+
+    setIsLoading(true);
+    try {
+      // 构建深度分析 prompt
+      const analysisPrompt = `基于当前比价结果，请生成一份 200 字左右的专家分析报告，包括：
+1. 哪个方案性价比最高
+2. 为何推荐该方案（价格、礼遇、取消政策等）
+3. 现在是否建议立即预订
+
+请用简洁、专业的语言回答。`;
+
+      // 发送分析请求（带上下文）
+      const userId = user?.id || "waypal_user_" + Date.now();
+      const response = await sendMessageToAgent(
+        analysisPrompt,
+        userId,
+        comparisonContext
+      );
+
+      if (response.reply) {
+        const analysisText = response.reply;
+        
+        // 创建专家分析消息
+        const analysisMessage: Message = {
+          id: `analysis-${Date.now()}`,
+          role: 'assistant',
+          content: '',
+          timestamp: Date.now(),
+        };
+        
+        // 使用 React 组件作为内容
+        setMessages(prev => [...prev, {
+          ...analysisMessage,
+          content: analysisText, // 保存文本用于数据库
+        }]);
+
+        // 保存到数据库
+        if (currentThreadId && isAuthenticated) {
+          try {
+            await threadQuery.saveMessage({
+              threadId: currentThreadId,
+              role: 'assistant',
+              content: analysisText,
+            });
+          } catch (saveError) {
+            console.error('Failed to save analysis message:', saveError);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to generate deep analysis:', error);
+      const errorMessage: Message = {
+        id: `err-${Date.now()}`,
+        role: 'assistant',
+        content: '抱歉，生成专家分析时出现错误，请稍后重试',
+        timestamp: Date.now(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
     }

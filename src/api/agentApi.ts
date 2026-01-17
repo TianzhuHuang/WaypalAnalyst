@@ -3,6 +3,8 @@
  * Handles communication with the Waypal Agent Backend
  */
 
+import { ComparisonContext, buildContextSummary } from '@/utils/contextBuilder';
+
 const AGENT_API_BASE_URL = process.env.NEXT_PUBLIC_AGENT_BACKEND_URL || 'https://waypal-agent-backend-266509309806.asia-east1.run.app';
 
 /**
@@ -188,16 +190,41 @@ export interface BookingStrategyResponse {
  * Send a message to the Agent API
  * @param message - User's input message
  * @param userId - User ID (from auth store or session storage)
+ * @param context - Optional comparison context to enhance the message
  * @returns Agent API response
  */
 export async function sendMessageToAgent(
   message: string,
-  userId: string
+  userId: string,
+  context?: ComparisonContext | null
 ): Promise<AgentMessageResponse> {
   try {
+    // 构建增强的消息文本
+    let enhancedMessage = message;
+    
+    if (context) {
+      const contextSummary = buildContextSummary(context);
+      // 根据后端 prompt 格式，构建完整的消息
+      enhancedMessage = `你是 wayPal 的旅行顾问助手。请与用户自然对话，回答要简洁、可执行、尽量一步到位。
+
+重要要求:
+- 不要编造事实，不确定就向用户提问确认。
+- 保持上下文一致，优先参考"对话摘要"与最近消息。
+
+对话摘要(可能为空): (空)
+
+最近对话: (无)
+
+${contextSummary}
+
+用户当前问题：${message}
+
+请直接输出你的回复(纯文本)`;
+    }
+
     const requestBody = {
       user_id: userId,
-      message_text: message,
+      message_text: enhancedMessage,
       force_dispatch: true,
     } as AgentMessageRequest;
     
