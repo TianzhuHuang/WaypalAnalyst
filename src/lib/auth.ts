@@ -86,17 +86,26 @@ export const authOptions: NextAuthConfig = {
   trustHost: true,
   callbacks: {
     async jwt({ token, user, account }) {
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/1c36209a-603e-4d99-af36-1961247a84af',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/auth.ts:88',message:'JWT callback entry',data:{hasUser:!!user,hasUserId:!!user?.id,hasUserEmail:!!user?.email,userEmail:user?.email?.substring(0,10)||'none'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+      // #endregion
       // 在 JWT token 中存储用户 ID
       // 优先使用 signIn callback 中设置的 user.id（如果数据库连接成功）
       if (user?.id) {
         token.userId = user.id;
         console.log('[Auth] JWT callback: User ID from signIn callback:', user.id);
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/1c36209a-603e-4d99-af36-1961247a84af',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/auth.ts:94',message:'JWT callback: Using user.id from signIn',data:{userId:user.id,userIdType:typeof user.id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         return token;
       }
       
       // 如果 signIn callback 中没有设置（可能数据库连接失败），尝试从数据库查询
       if (user?.email) {
         try {
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/1c36209a-603e-4d99-af36-1961247a84af',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/auth.ts:100',message:'JWT callback: Attempting DB query',data:{email:user.email?.substring(0,10)||'none'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+          // #endregion
           const dbUser = await db
             .select()
             .from(profiles)
@@ -106,8 +115,14 @@ export const authOptions: NextAuthConfig = {
           if (dbUser.length > 0) {
             token.userId = dbUser[0].id;
             console.log('[Auth] JWT callback: User ID fetched from DB:', dbUser[0].id);
+            // #region agent log
+            fetch('http://127.0.0.1:7243/ingest/1c36209a-603e-4d99-af36-1961247a84af',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/auth.ts:109',message:'JWT callback: User ID fetched from DB',data:{userId:dbUser[0].id,userIdType:typeof dbUser[0].id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+            // #endregion
           } else {
             console.warn('[Auth] JWT callback: User not found in database:', user.email);
+            // #region agent log
+            fetch('http://127.0.0.1:7243/ingest/1c36209a-603e-4d99-af36-1961247a84af',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/auth.ts:112',message:'JWT callback: User not found in DB',data:{email:user.email?.substring(0,10)||'none'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+            // #endregion
           }
         } catch (error: any) {
           console.error('[Auth] JWT callback: Error fetching user ID:', {
@@ -115,6 +130,9 @@ export const authOptions: NextAuthConfig = {
             code: error.code,
             email: user.email,
           });
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/1c36209a-603e-4d99-af36-1961247a84af',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/auth.ts:118',message:'JWT callback: DB query error',data:{errorMessage:error.message,errorCode:error.code,email:user.email?.substring(0,10)||'none'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'A'})}).catch(()=>{});
+          // #endregion
           // 即使数据库查询失败，也继续（session callback 会尝试再次查询）
         }
       }
@@ -211,16 +229,25 @@ export const authOptions: NextAuthConfig = {
         return session;
       }
 
+      // #region agent log
+      fetch('http://127.0.0.1:7243/ingest/1c36209a-603e-4d99-af36-1961247a84af',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/auth.ts:214',message:'Session callback: Checking token.userId',data:{hasTokenUserId:!!token?.userId,tokenUserId:token?.userId||'none',hasTokenSub:!!token?.sub,tokenSub:token?.sub||'none'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
       // 优先从 token.userId 获取（在 JWT callback 中已设置）
       if (token?.userId) {
         session.user.id = token.userId as string;
         console.log('[Auth] Session callback: User ID from token.userId:', token.userId);
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/1c36209a-603e-4d99-af36-1961247a84af',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/auth.ts:218',message:'Session callback: Using token.userId',data:{userId:token.userId,userIdType:typeof token.userId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
         return session;
       }
 
       // 如果 token.userId 没有，尝试从数据库获取
       if (session.user?.email) {
         try {
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/1c36209a-603e-4d99-af36-1961247a84af',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/auth.ts:225',message:'Session callback: Attempting DB query',data:{email:session.user.email?.substring(0,10)||'none'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+          // #endregion
           const user = await db
             .select()
             .from(profiles)
@@ -230,9 +257,15 @@ export const authOptions: NextAuthConfig = {
           if (user.length > 0) {
             session.user.id = user[0].id;
             console.log('[Auth] Session callback: User ID fetched from DB:', user[0].id);
+            // #region agent log
+            fetch('http://127.0.0.1:7243/ingest/1c36209a-603e-4d99-af36-1961247a84af',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/auth.ts:233',message:'Session callback: User ID fetched from DB',data:{userId:user[0].id,userIdType:typeof user[0].id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+            // #endregion
             return session;
           } else {
             console.warn('[Auth] Session callback: User not found in database:', session.user.email);
+            // #region agent log
+            fetch('http://127.0.0.1:7243/ingest/1c36209a-603e-4d99-af36-1961247a84af',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/auth.ts:236',message:'Session callback: User not found in DB',data:{email:session.user.email?.substring(0,10)||'none'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+            // #endregion
           }
         } catch (error: any) {
           // 数据库连接失败时的 fallback
@@ -241,6 +274,9 @@ export const authOptions: NextAuthConfig = {
             code: error.code,
             email: session.user.email,
           });
+          // #region agent log
+          fetch('http://127.0.0.1:7243/ingest/1c36209a-603e-4d99-af36-1961247a84af',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/auth.ts:242',message:'Session callback: DB query error',data:{errorMessage:error.message,errorCode:error.code,email:session.user.email?.substring(0,10)||'none'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+          // #endregion
         }
       }
 
@@ -249,6 +285,9 @@ export const authOptions: NextAuthConfig = {
         console.warn('[Auth] Session callback: Using token.sub as last resort fallback:', token.sub);
         session.user.id = token.sub as string;
         console.log('[Auth] Session callback: Set session.user.id to token.sub:', session.user.id);
+        // #region agent log
+        fetch('http://127.0.0.1:7243/ingest/1c36209a-603e-4d99-af36-1961247a84af',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'src/lib/auth.ts:254',message:'Session callback: Using token.sub fallback',data:{userId:token.sub,userIdType:typeof token.sub,isGoogleOAuthId:true},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
         return session;
       }
 
