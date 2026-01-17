@@ -8,15 +8,24 @@ import { useThreadListQuery } from '@/hooks/useThreadListQuery';
 import { useQueryClient } from '@tanstack/react-query';
 import ThreadListSkeleton from './ThreadListSkeleton';
 
-// 格式化日期显示（例如：1月15日 - 1月19日）
+// 格式化日期显示（例如：1月20日 - 21日 或 1月20日 - 2月21日）
 function formatDateRange(checkIn?: string | null, checkOut?: string | null): string | null {
   if (!checkIn || !checkOut) return null;
   try {
     const checkInDate = new Date(checkIn);
     const checkOutDate = new Date(checkOut);
-    const formattedCheckIn = formatDate(checkInDate, 'M月d日', { locale: zhCN });
-    const formattedCheckOut = formatDate(checkOutDate, 'M月d日', { locale: zhCN });
-    return `${formattedCheckIn} - ${formattedCheckOut}`;
+    
+    // 如果同一个月，只显示一次月份
+    const checkInMonth = formatDate(checkInDate, 'M月', { locale: zhCN });
+    const checkOutMonth = formatDate(checkOutDate, 'M月', { locale: zhCN });
+    const checkInDay = formatDate(checkInDate, 'd日', { locale: zhCN });
+    const checkOutDay = formatDate(checkOutDate, 'd日', { locale: zhCN });
+    
+    if (checkInMonth === checkOutMonth) {
+      return `${checkInMonth}${checkInDay} - ${checkOutDay}`;
+    } else {
+      return `${checkInMonth}${checkInDay} - ${checkOutMonth}${checkOutDay}`;
+    }
   } catch (error) {
     console.error('Error formatting date range:', error);
     return null;
@@ -146,25 +155,17 @@ export default function ThreadList({
           onMouseLeave={() => handleMouseLeave(thread.id)}
         >
           <div className="flex items-start justify-between gap-2">
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0 space-y-1">
               <p className="text-sm font-medium truncate">{thread.title || thread.hotelName}</p>
-              <div className="flex items-center gap-2 mt-1">
-                {thread.hotelName && (
-                  <p className="text-xs text-white/40 truncate">{thread.hotelName}</p>
-                )}
-                {(() => {
-                  const dateRange = formatDateRange(thread.checkIn, thread.checkOut);
-                  if (dateRange) {
-                    return (
-                      <>
-                        {thread.hotelName && <span className="text-xs text-white/20">·</span>}
-                        <p className="text-xs text-white/40">{dateRange}</p>
-                      </>
-                    );
-                  }
-                  return null;
-                })()}
-              </div>
+              {(() => {
+                const dateRange = formatDateRange(thread.checkIn, thread.checkOut);
+                if (dateRange) {
+                  return (
+                    <p className="text-xs text-white/50">{dateRange}</p>
+                  );
+                }
+                return null;
+              })()}
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <div className="flex items-center gap-1 text-xs text-white/30">

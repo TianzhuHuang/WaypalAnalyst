@@ -385,7 +385,20 @@ export default function WaypalApp() {
         
         setDynamicSuggestions(["分析具体礼遇", "查看房型实拍", "立即预订最佳方案"]);
       } else {
-        const replyText = res.reply ? JSON.parse(res.reply).text || res.reply : '非常抱歉，尊贵的宾客，我暂时无法同步实时数据。请稍后再试';
+        // reply_type === 'general' 时，reply 是纯文本，不需要 JSON.parse
+        let replyText = res.reply || '非常抱歉，尊贵的宾客，我暂时无法同步实时数据。请稍后再试';
+        
+        // 尝试解析 JSON（如果 reply 是 JSON 字符串），但失败时直接使用原文本
+        if (res.reply && res.reply.trim().startsWith('{')) {
+          try {
+            const parsed = JSON.parse(res.reply);
+            replyText = parsed.text || parsed.message || res.reply;
+          } catch (e) {
+            // 不是 JSON，直接使用原文本
+            replyText = res.reply;
+          }
+        }
+        
         const assistantMessage: Message = {
           id: `a-${Date.now()}`, 
           role: 'assistant', 
