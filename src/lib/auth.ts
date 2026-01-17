@@ -205,9 +205,10 @@ export const authOptions: NextAuthConfig = {
         sessionUserEmail: session?.user?.email?.substring(0, 10) || 'NONE',
       });
 
-      // 确保 session.user 对象存在
-      if (!session.user) {
-        session.user = {};
+      // 如果 session 或 session.user 不存在，直接返回
+      if (!session?.user) {
+        console.error('[Auth] Session callback: No session or user found');
+        return session;
       }
 
       // 优先从 token.userId 获取（在 JWT callback 中已设置）
