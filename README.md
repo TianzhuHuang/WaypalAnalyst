@@ -65,7 +65,7 @@ NEXTAUTH_SECRET=your-secret-key-here
 NEXTAUTH_URL=http://localhost:3000
 ```
 
-**Note**: For Google OAuth setup, see [GOOGLE_OAUTH_SETUP.md](./GOOGLE_OAUTH_SETUP.md)
+**Note**: For Google OAuth setup, configure the OAuth credentials in Google Cloud Console and add them to `.env.local`.
 
 4. Run the development server:
 ```bash
@@ -148,7 +148,7 @@ The project includes `cloudbuild.yaml` for automated CI/CD via Google Cloud Buil
 ## 🔐 Authentication & Database
 
 ### Google OAuth Setup
-The application uses NextAuth.js v5 with Google OAuth for authentication. See [GOOGLE_OAUTH_SETUP.md](./GOOGLE_OAUTH_SETUP.md) for detailed setup instructions.
+The application uses NextAuth.js v5 with Google OAuth for authentication. Configure OAuth credentials in Google Cloud Console and add them to `.env.local`.
 
 ### Database Setup
 The application uses Google Cloud SQL (PostgreSQL) with Drizzle ORM. Database schema is defined in `src/lib/db/schema.ts`.
@@ -162,7 +162,6 @@ The application uses Google Cloud SQL (PostgreSQL) with Drizzle ORM. Database sc
 
 - [Project Description](./PROJECT_DESCRIPTION.md) - Detailed project overview
 - [Backend API Reference](./backend_api_reference.md) - API documentation
-- [Google OAuth Setup](./GOOGLE_OAUTH_SETUP.md) - Google OAuth configuration guide
 - [Module 1 Implementation](./MODULE_1_IMPLEMENTATION.md) - Login and conversation persistence implementation
 
 ## 🤝 Contributing
