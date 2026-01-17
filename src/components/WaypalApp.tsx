@@ -830,16 +830,29 @@ export default function WaypalApp() {
                       <span className="text-[11px] font-black text-[#12d65e] uppercase tracking-[0.2em]">WayPal Assistant</span>
                     </div>
                     <div className="text-[14px] md:text-[16px] text-white/90 leading-[1.7] md:leading-[1.8] tracking-tight message-content pl-1 max-w-full">
-                      <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                      {msg.id.startsWith('analysis-') ? (
+                        <ExpertAnalysisCard analysis={msg.content} locale="zh" />
+                      ) : (
+                        <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                      )}
                       {msg.type === 'comparison' && msg.comparisonData && (
-                        <DarkComparisonTable 
-                          data={msg.comparisonData}
-                          onBook={(row) => {
-                            if (row.websiteUrl) {
-                              window.open(row.websiteUrl, '_blank');
-                            }
-                          }}
-                        />
+                        <>
+                          <DarkComparisonTable 
+                            data={msg.comparisonData}
+                            onBook={(row) => {
+                              if (row.websiteUrl) {
+                                window.open(row.websiteUrl, '_blank');
+                              }
+                            }}
+                          />
+                          {comparisonContext && (
+                            <DeepAnalysisButton
+                              onAnalyze={handleDeepAnalysis}
+                              isLoading={isLoading}
+                              locale="zh"
+                            />
+                          )}
+                        </>
                       )}
                       {msg.type === 'room-tour' && <VideoTourList videos={msg.roomTourVideos || []} onPlay={(id) => setPlayingVideoId(id)} />}
                     </div>
