@@ -2,11 +2,26 @@
 
 import { useState, useRef } from 'react';
 import { MessageSquare, Clock, Trash2 } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow, format as formatDate } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 import { useThreadListQuery } from '@/hooks/useThreadListQuery';
 import { useQueryClient } from '@tanstack/react-query';
 import ThreadListSkeleton from './ThreadListSkeleton';
+
+// 格式化日期显示（例如：1月15日 - 1月19日）
+function formatDateRange(checkIn?: string | null, checkOut?: string | null): string | null {
+  if (!checkIn || !checkOut) return null;
+  try {
+    const checkInDate = new Date(checkIn);
+    const checkOutDate = new Date(checkOut);
+    const formattedCheckIn = formatDate(checkInDate, 'M月d日', { locale: zhCN });
+    const formattedCheckOut = formatDate(checkOutDate, 'M月d日', { locale: zhCN });
+    return `${formattedCheckIn} - ${formattedCheckOut}`;
+  } catch (error) {
+    console.error('Error formatting date range:', error);
+    return null;
+  }
+}
 
 interface ThreadListProps {
   onSelectThread: (threadId: string) => void;
@@ -133,7 +148,23 @@ export default function ThreadList({
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium truncate">{thread.title || thread.hotelName}</p>
-              <p className="text-xs text-white/40 truncate mt-1">{thread.hotelName}</p>
+              <div className="flex items-center gap-2 mt-1">
+                {thread.hotelName && (
+                  <p className="text-xs text-white/40 truncate">{thread.hotelName}</p>
+                )}
+                {(() => {
+                  const dateRange = formatDateRange(thread.checkIn, thread.checkOut);
+                  if (dateRange) {
+                    return (
+                      <>
+                        {thread.hotelName && <span className="text-xs text-white/20">·</span>}
+                        <p className="text-xs text-white/40">{dateRange}</p>
+                      </>
+                    );
+                  }
+                  return null;
+                })()}
+              </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <div className="flex items-center gap-1 text-xs text-white/30">
