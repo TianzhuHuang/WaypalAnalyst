@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { MapPin, Calendar, CheckCircle2, XCircle, Info, ExternalLink, Star, CreditCard, Utensils, Bed, ChevronDown, ShieldCheck, X, Gift, Sparkles, Coffee, DollarSign, TrendingUp, Zap } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { MapPin, Calendar, CheckCircle2, XCircle, Info, ExternalLink, Star, CreditCard, Utensils, Bed, ChevronDown, ShieldCheck, X, Gift, Sparkles, Coffee, DollarSign, TrendingUp, Zap, Sparkles as SparklesIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
 interface Promotion {
@@ -62,6 +62,11 @@ interface AnalystComparisonCardProps {
   locale?: string;
   onDateChange?: (checkIn: Date, checkOut: Date) => void;
   showDatePicker?: boolean;
+  darkMode?: boolean; // 新增：是否使用黑色主题
+  hotelId?: number | null;
+  checkIn?: string; // YYYY-MM-DD
+  checkOut?: string; // YYYY-MM-DD
+  onStrategyRequest?: (hotelId: number | null, checkIn: string | undefined, checkOut: string | undefined) => void; // 回调函数，用于请求策略
 }
 
 // Fork and Spoon Icon Component
@@ -178,6 +183,11 @@ export default function AnalystComparisonCard({
   locale = 'zh',
   onDateChange,
   showDatePicker: showDatePickerProp = false,
+  darkMode = false,
+  hotelId,
+  checkIn,
+  checkOut,
+  onStrategyRequest,
 }: AnalystComparisonCardProps) {
   const isZh = locale === 'zh';
   const [modalState, setModalState] = useState<{
@@ -190,6 +200,15 @@ export default function AnalystComparisonCard({
     title: '',
   });
 
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const leftFadeRef = useRef<HTMLDivElement>(null);
+  const rightFadeRef = useRef<HTMLDivElement>(null);
+  const [scrollIndicatorState, setScrollIndicatorState] = useState({
+    show: false,
+    width: 0,
+    left: 0,
+  });
+
   const openModal = (title: string, description?: string, expiry?: string) => {
     setModalState({ isOpen: true, title, description, expiry });
   };
@@ -197,6 +216,67 @@ export default function AnalystComparisonCard({
   const closeModal = () => {
     setModalState({ isOpen: false, title: '', description: undefined, expiry: undefined });
   };
+  
+  // 更新渐变遮罩的显示状态和滚动进度
+  const updateFadeVisibility = () => {
+    const container = scrollContainerRef.current;
+    const leftFade = leftFadeRef.current;
+    const rightFade = rightFadeRef.current;
+    
+    if (!container || !leftFade || !rightFade) return;
+    
+    // 计算最大滚动距离
+    const maxScroll = container.scrollWidth - container.clientWidth;
+    
+    // 检查是否需要显示滚动指示器并计算位置
+    const needsScroll = container.scrollWidth > container.clientWidth;
+    if (needsScroll) {
+      const currentScroll = container.scrollLeft;
+      const indicatorWidth = (container.clientWidth / container.scrollWidth) * 100;
+      const indicatorLeft = maxScroll > 0 ? (currentScroll / maxScroll) * (100 - indicatorWidth) : 0;
+      
+      setScrollIndicatorState({
+        show: true,
+        width: indicatorWidth,
+        left: indicatorLeft,
+      });
+    } else {
+      setScrollIndicatorState({ show: false, width: 0, left: 0 });
+    }
+    
+    // 左侧遮罩：如果已经滚动到最左边，隐藏
+    if (container.scrollLeft <= 5) {
+      leftFade.style.opacity = '0';
+    } else {
+      leftFade.style.opacity = '1';
+    }
+    
+    // 右侧遮罩：如果已经滚动到最右边，隐藏
+    if (container.scrollLeft >= maxScroll - 5) {
+      rightFade.style.opacity = '0';
+    } else {
+      rightFade.style.opacity = '1';
+    }
+  };
+  
+  // 初始化时检查是否需要显示遮罩
+  useEffect(() => {
+    // 延迟执行，确保 DOM 已渲染
+    const timer = setTimeout(() => {
+      updateFadeVisibility();
+    }, 100);
+    
+    // 监听窗口大小变化
+    const handleResize = () => {
+      setTimeout(updateFadeVisibility, 100);
+    };
+    
+    window.addEventListener('resize', handleResize);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [rows]);
 
   return (
     <>
@@ -208,8 +288,9 @@ export default function AnalystComparisonCard({
         expiry={modalState.expiry}
         locale={locale}
       />
-      <div className="w-full bg-white overflow-visible">
-      {/* Card Header */}
+      <div className={`w-full overflow-visible ${darkMode ? 'bg-transparent' : 'bg-white'}`}>
+      {/* Card Header - 只在非 dark mode 时显示 */}
+      {!darkMode && (
       <div className="p-4 md:p-6 border-b border-gray-200 bg-white">
         {/* Hotel Name with Official Site Button */}
         <div className="flex items-center justify-between mb-3">
@@ -263,25 +344,53 @@ export default function AnalystComparisonCard({
           )}
         </div>
       </div>
+      )}
 
       {/* Comparison Table - Desktop */}
-      <div className="hidden md:block overflow-x-auto">
-        <table className="w-full border-collapse bg-white">
+      <div className="hidden md:block relative my-6">
+        {/* 滚动提示 - 更明显 */}
+        <div className="absolute -top-4 right-4 flex items-center gap-2 z-20 pointer-events-none">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/[0.08] backdrop-blur-md border border-white/10 rounded-full">
+            <i className="fa-solid fa-arrows-left-right text-[10px] text-white/70"></i>
+            <span className="text-[9px] font-bold uppercase tracking-wider text-white/70">左右滑动</span>
+          </div>
+        </div>
+        
+        {/* 表格容器 - 带圆角和渐变遮罩 */}
+        <div className="relative">
+          {/* 左侧渐变遮罩 - 提示可以向左滚动 */}
+          <div 
+            ref={leftFadeRef}
+            className="absolute left-0 top-0 bottom-0 w-16 bg-gradient-to-r from-black/50 to-transparent pointer-events-none z-10 rounded-l-[24px] opacity-0 transition-opacity duration-300"
+          ></div>
+          
+          {/* 右侧渐变遮罩 - 提示可以向右滚动 */}
+          <div 
+            ref={rightFadeRef}
+            className="absolute right-0 top-0 bottom-0 w-16 bg-gradient-to-l from-black/50 to-transparent pointer-events-none z-10 rounded-r-[24px] transition-opacity duration-300"
+          ></div>
+          
+          <div 
+            ref={scrollContainerRef}
+            className={`w-full overflow-x-auto rounded-[24px] border ${darkMode ? 'border-white/10 bg-white/[0.03] backdrop-blur-xl' : 'border-gray-200 bg-white'} shadow-2xl table-scrollbar`}
+            onScroll={updateFadeVisibility}
+          >
+        <table className={`border-collapse ${darkMode ? 'bg-transparent' : 'bg-white'}`} style={{ minWidth: 'max(1000px, calc(100vw - 200px))', width: '100%' }}>
           <thead>
-            <tr className="border-b-2 border-gray-200 bg-gray-50/50">
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider align-middle" style={{ width: '180px' }}>
+            <tr className={`border-b ${darkMode ? 'bg-white/[0.02] border-white/5' : 'border-b-2 border-gray-200 bg-gray-50/50'}`}>
+              <th className={`px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider align-middle ${darkMode ? 'text-white/40' : 'text-gray-600'}`} style={{ width: '200px', minWidth: '200px' }}>
                 {isZh ? '预订平台 / 价格' : 'PLATFORM / PRICE'}
               </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider align-middle" style={{ width: '180px' }}>
+              <th className={`px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider align-middle ${darkMode ? 'text-white/40' : 'text-gray-600'}`} style={{ width: '220px', minWidth: '220px' }}>
                 {isZh ? '优惠政策' : 'PROMOTIONS'}
               </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider align-middle" style={{ width: '240px' }}>
+              <th className={`px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider align-middle ${darkMode ? 'text-white/40' : 'text-gray-600'}`} style={{ width: '300px', minWidth: '300px' }}>
                 {isZh ? '专属礼遇' : 'PERKS'}
               </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider align-middle" style={{ width: '150px' }}>
+              <th className={`px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider align-middle ${darkMode ? 'text-white/40' : 'text-gray-600'}`} style={{ width: '180px', minWidth: '180px' }}>
                 {isZh ? '政策' : 'POLICY'}
               </th>
-              <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider align-middle" style={{ width: '120px' }}>
+              <th className={`px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider align-middle ${darkMode ? 'text-white/40' : 'text-gray-600'}`} style={{ width: '140px', minWidth: '140px' }}>
                 {isZh ? '操作' : 'ACTION'}
               </th>
             </tr>
@@ -295,22 +404,22 @@ export default function AnalystComparisonCard({
                 ? (isZh ? '含早' : 'Breakfast Included')
                 : (isZh ? '无早' : 'No Breakfast');
               
-              const isLuxTrip = row.isBest || row.platform?.toLowerCase() === 'luxtrip';
+              const isLuxTrip = row.isBest || row.platform?.toLowerCase() === 'luxtrip' || row.platform?.toLowerCase().includes('luxtrip');
               
               return (
                 <tr
                   key={index}
-                  className={`border-b border-gray-100 transition-colors ${
-                    isLuxTrip
-                      ? 'bg-emerald-50/20 border-l-4 border-l-[#00CD52] hover:bg-emerald-50/30'
-                      : 'bg-white hover:bg-gray-50/50'
+                  className={`border-b transition-colors ${
+                    darkMode
+                      ? `${isLuxTrip ? 'bg-[#12d65e]/[0.02] border-l-4 border-l-[#12d65e] hover:bg-white/[0.05] border-white/5' : 'bg-transparent hover:bg-white/[0.05] border-white/5'}`
+                      : `${isLuxTrip ? 'bg-emerald-50/20 border-l-4 border-l-[#00CD52] hover:bg-emerald-50/30 border-gray-100' : 'bg-white hover:bg-gray-50/50 border-gray-100'}`
                   }`}
                 >
                   {/* Platform & Price Column */}
-                  <td className="px-4 py-4 align-middle">
+                  <td className="px-6 py-5 align-middle" style={{ width: '200px', minWidth: '200px' }}>
                     <div className="flex flex-col">
                       {/* Platform Name */}
-                      <div className="flex items-center gap-2 mb-2">
+                      <div className="flex items-center gap-2.5 mb-2.5">
                         {row.platformLogo && (
                           <img 
                             src={row.platformLogo} 
@@ -318,31 +427,41 @@ export default function AnalystComparisonCard({
                             className="w-5 h-5 object-contain"
                           />
                         )}
-                        <span className={`text-sm font-medium ${
-                          isLuxTrip ? 'text-[#00CD52]' : 'text-gray-700'
+                        <span className={`text-sm font-semibold ${
+                          darkMode
+                            ? isLuxTrip ? 'text-[#12d65e]' : 'text-white'
+                            : isLuxTrip ? 'text-[#00CD52]' : 'text-gray-700'
                         }`}>
                           {row.platform}
                         </span>
                         {isLuxTrip && (
-                          <span className="px-2 py-0.5 bg-[#00CD52] text-white text-[10px] font-bold rounded whitespace-nowrap min-w-fit">
+                          <span className={`px-2.5 py-1 text-white text-[10px] font-bold rounded whitespace-nowrap min-w-fit ${
+                            darkMode ? 'bg-[#12d65e]' : 'bg-[#00CD52]'
+                          }`}>
                             {isZh ? '最佳价值' : 'BEST VALUE'}
                           </span>
                         )}
                       </div>
                       {/* Price */}
-                      <span className={`font-bold text-lg leading-tight ${
-                        isLuxTrip ? 'text-[#00CD52]' : 'text-gray-900'
-                      }`}>
-                        {row.totalPrice}
-                      </span>
-                      <span className="text-xs text-gray-500 mt-0.5">
-                        {row.nightlyPrice}
-                      </span>
+                      <div className="flex flex-col gap-0.5">
+                        <span className={`font-bold text-xl leading-tight ${
+                          darkMode
+                            ? isLuxTrip ? 'text-[#12d65e]' : 'text-white'
+                            : isLuxTrip ? 'text-[#00CD52]' : 'text-gray-900'
+                        }`}>
+                          {row.totalPrice}
+                        </span>
+                        <span className={`text-xs ${
+                          darkMode ? 'text-white/60' : 'text-gray-500'
+                        }`}>
+                          {row.nightlyPrice}
+                        </span>
+                      </div>
                     </div>
                   </td>
 
                   {/* Promotions Column */}
-                  <td className="px-4 py-4 align-middle">
+                  <td className="px-6 py-5 align-middle" style={{ width: '220px', minWidth: '220px' }}>
                     <div className="flex flex-col gap-1">
                       {row.promotions && row.promotions.length > 0 ? (
                         row.promotions.map((promo, promoIndex) => (
@@ -367,58 +486,69 @@ export default function AnalystComparisonCard({
                   </td>
 
                   {/* Perks Column */}
-                  <td className="px-4 py-4 align-middle">
-                    <div className="flex flex-col gap-1.5">
+                  <td className="px-6 py-5 align-middle" style={{ width: '300px', minWidth: '300px' }}>
+                    <div className="flex flex-col gap-2">
                       {/* Structured Perks - Clean green style with icons */}
                       {row.structuredPerks && row.structuredPerks.length > 0 ? (
                         row.structuredPerks.map((perk, perkIndex) => {
                           // Determine icon based on perk label
-                          const getPerkIcon = (label: string) => {
+                            const perkColor = darkMode ? '#12d65e' : '#00CD52';
+                            const getPerkIcon = (label: string) => {
                             const lowerLabel = label.toLowerCase();
                             if (lowerLabel.includes('breakfast') || lowerLabel.includes('早') || lowerLabel.includes('早餐')) {
-                              return <Coffee className="w-3.5 h-3.5 text-[#00CD52] flex-shrink-0" />;
+                              return <Coffee className={`w-3.5 h-3.5 flex-shrink-0`} style={{ color: perkColor }} />;
                             }
                             if (lowerLabel.includes('credit') || lowerLabel.includes('美金') || lowerLabel.includes('dollar') || lowerLabel.includes('$')) {
-                              return <DollarSign className="w-3.5 h-3.5 text-[#00CD52] flex-shrink-0" />;
+                              return <DollarSign className={`w-3.5 h-3.5 flex-shrink-0`} style={{ color: perkColor }} />;
                             }
                             if (lowerLabel.includes('upgrade') || lowerLabel.includes('升房') || lowerLabel.includes('room')) {
-                              return <TrendingUp className="w-3.5 h-3.5 text-[#00CD52] flex-shrink-0" />;
+                              return <TrendingUp className={`w-3.5 h-3.5 flex-shrink-0`} style={{ color: perkColor }} />;
                             }
-                            return <Sparkles className="w-3.5 h-3.5 text-[#00CD52] flex-shrink-0" />;
+                            return <Sparkles className={`w-3.5 h-3.5 flex-shrink-0`} style={{ color: perkColor }} />;
                           };
                           
                           return (
                             <button
                               key={perkIndex}
                               onClick={() => openModal(perk.label, perk.detail)}
-                              className="inline-flex items-center gap-1.5 px-2 py-1 bg-transparent text-[#00CD52] text-xs font-medium rounded transition-colors cursor-pointer hover:bg-emerald-50/30 text-left w-fit group"
+                              className={`inline-flex items-center gap-1.5 px-2 py-1 bg-transparent text-xs font-medium rounded transition-colors cursor-pointer text-left w-fit group ${
+                                darkMode 
+                                  ? `text-[#12d65e] hover:bg-[#12d65e]/10` 
+                                  : `text-[#00CD52] hover:bg-emerald-50/30`
+                              }`}
                             >
-                              <div className="w-1.5 h-1.5 rounded-full bg-[#00CD52] flex-shrink-0 group-hover:scale-125 transition-transform" />
+                              <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 group-hover:scale-125 transition-transform`} style={{ backgroundColor: perkColor }} />
                               {getPerkIcon(perk.label)}
                               <span className="whitespace-nowrap">{perk.label}</span>
                             </button>
                           );
                         })
                       ) : row.perks.perksSummary ? (
-                        <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-transparent text-[#00CD52] text-xs font-medium rounded w-fit">
-                          <div className="w-1.5 h-1.5 rounded-full bg-[#00CD52] flex-shrink-0" />
-                          <Sparkles className="w-3.5 h-3.5 text-[#00CD52] flex-shrink-0" />
+                        <div className={`inline-flex items-center gap-1.5 px-2 py-1 bg-transparent text-xs font-medium rounded w-fit ${
+                          darkMode ? 'text-[#12d65e]' : 'text-[#00CD52]'
+                        }`}>
+                          <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${darkMode ? 'bg-[#12d65e]' : 'bg-[#00CD52]'}`} />
+                          <Sparkles className={`w-3.5 h-3.5 flex-shrink-0 ${darkMode ? 'text-[#12d65e]' : 'text-[#00CD52]'}`} />
                           <span>{row.perks.perksSummary}</span>
                         </div>
                       ) : (
                         <>
                           {/* Breakfast with coffee icon */}
-                          <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-transparent text-[#00CD52] text-xs font-medium rounded w-fit">
-                            <div className="w-1.5 h-1.5 rounded-full bg-[#00CD52] flex-shrink-0" />
-                            <Coffee className="w-3.5 h-3.5 text-[#00CD52] flex-shrink-0" />
+                          <div className={`inline-flex items-center gap-1.5 px-2 py-1 bg-transparent text-xs font-medium rounded w-fit ${
+                            darkMode ? 'text-[#12d65e]' : 'text-[#00CD52]'
+                          }`}>
+                            <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${darkMode ? 'bg-[#12d65e]' : 'bg-[#00CD52]'}`} />
+                            <Coffee className={`w-3.5 h-3.5 flex-shrink-0 ${darkMode ? 'text-[#12d65e]' : 'text-[#00CD52]'}`} />
                             <span>{breakfastText}</span>
                           </div>
                           
                           {/* Points with star icon */}
                           {row.perks.pointsAccumulatable && (
-                            <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-transparent text-[#00CD52] text-xs font-medium rounded w-fit">
-                              <div className="w-1.5 h-1.5 rounded-full bg-[#00CD52] flex-shrink-0" />
-                              <Star className="w-3.5 h-3.5 fill-[#00CD52] text-[#00CD52] flex-shrink-0" strokeWidth={1.5} />
+                            <div className={`inline-flex items-center gap-1.5 px-2 py-1 bg-transparent text-xs font-medium rounded w-fit ${
+                              darkMode ? 'text-[#12d65e]' : 'text-[#00CD52]'
+                            }`}>
+                              <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${darkMode ? 'bg-[#12d65e]' : 'bg-[#00CD52]'}`} />
+                              <Star className={`w-3.5 h-3.5 flex-shrink-0 ${darkMode ? 'fill-[#12d65e] text-[#12d65e]' : 'fill-[#00CD52] text-[#00CD52]'}`} strokeWidth={1.5} />
                               <span>{isZh ? '可累积积分' : 'Earns Points'}</span>
                             </div>
                           )}
@@ -427,23 +557,26 @@ export default function AnalystComparisonCard({
                           {row.perks.vipBenefits && row.perks.vipBenefits.length > 0 && (
                             <>
                               {row.perks.vipBenefits.map((benefit, benefitIndex) => {
+                                const perkColor = darkMode ? '#12d65e' : '#00CD52';
                                 const getBenefitIcon = (benefitText: string) => {
                                   const lower = benefitText.toLowerCase();
                                   if (lower.includes('credit') || lower.includes('$') || lower.includes('dollar')) {
-                                    return <DollarSign className="w-3.5 h-3.5 text-[#00CD52] flex-shrink-0" />;
+                                    return <DollarSign className={`w-3.5 h-3.5 flex-shrink-0`} style={{ color: perkColor }} />;
                                   }
                                   if (lower.includes('upgrade') || lower.includes('room')) {
-                                    return <TrendingUp className="w-3.5 h-3.5 text-[#00CD52] flex-shrink-0" />;
+                                    return <TrendingUp className={`w-3.5 h-3.5 flex-shrink-0`} style={{ color: perkColor }} />;
                                   }
-                                  return <Sparkles className="w-3.5 h-3.5 text-[#00CD52] flex-shrink-0" />;
+                                  return <Sparkles className={`w-3.5 h-3.5 flex-shrink-0`} style={{ color: perkColor }} />;
                                 };
                                 
                                 return (
                                   <div
                                     key={benefitIndex}
-                                    className="inline-flex items-center gap-1.5 px-2 py-1 bg-transparent text-[#00CD52] text-xs font-medium rounded w-fit"
+                                    className={`inline-flex items-center gap-1.5 px-2 py-1 bg-transparent text-xs font-medium rounded w-fit ${
+                                      darkMode ? 'text-[#12d65e]' : 'text-[#00CD52]'
+                                    }`}
                                   >
-                                    <div className="w-1.5 h-1.5 rounded-full bg-[#00CD52] flex-shrink-0" />
+                                    <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0`} style={{ backgroundColor: perkColor }} />
                                     {getBenefitIcon(benefit)}
                                     <span className="whitespace-nowrap">{benefit}</span>
                                   </div>
@@ -467,7 +600,7 @@ export default function AnalystComparisonCard({
                   </td>
 
                   {/* Policy Column */}
-                  <td className="px-4 py-4 align-middle">
+                  <td className="px-6 py-5 align-middle" style={{ width: '180px', minWidth: '180px' }}>
                     <div className="flex flex-col gap-2">
                       {/* Cancellation Policy with icon */}
                       <div className="flex items-center gap-2">
@@ -491,7 +624,9 @@ export default function AnalystComparisonCard({
                               : (isZh ? '有条件取消' : 'Conditional')}
                           </span>
                           {row.policy.cancellationDetails && (
-                            <span className="text-[10px] text-gray-500 mt-0.5 whitespace-nowrap">
+                            <span className={`text-[10px] mt-0.5 whitespace-nowrap ${
+                              darkMode ? 'text-white/60' : 'text-gray-500'
+                            }`}>
                               {row.policy.cancellationDetails}
                             </span>
                           )}
@@ -500,8 +635,10 @@ export default function AnalystComparisonCard({
                       
                       {/* Payment Method with card icon */}
                       <div className="flex items-center gap-2">
-                        <CreditCard className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
-                        <span className="text-xs text-gray-600">
+                        <CreditCard className={`w-3.5 h-3.5 flex-shrink-0 ${darkMode ? 'text-white/60' : 'text-gray-500'}`} />
+                        <span className={`text-xs ${
+                          darkMode ? 'text-white/80' : 'text-gray-600'
+                        }`}>
                           {row.policy.paymentPolicyText ||
                             (row.policy.paymentPolicy === 'online_payment'
                               ? (isZh ? '在线预付' : 'Prepay Online')
@@ -515,29 +652,73 @@ export default function AnalystComparisonCard({
                     </div>
                   </td>
 
-                  {/* Action Column - Booking Link */}
-                  <td className="px-4 py-4 align-middle">
-                    {row.websiteUrl ? (
-                      <a
-                        href={row.websiteUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={`hover:underline inline-flex items-center gap-1 text-xs font-medium transition-colors whitespace-nowrap ${
-                          isLuxTrip ? 'text-[#00CD52] hover:text-[#00CD52]/80' : 'text-gray-600 hover:text-gray-800'
-                        }`}
-                      >
-                        <span>{isZh ? '访问网站' : 'Visit Site'}</span>
-                        <ExternalLink className="w-3 h-3 flex-shrink-0" />
-                      </a>
-                    ) : (
-                      <span className="text-xs text-gray-400">{isZh ? '—' : '—'}</span>
-                    )}
+                  {/* Action Column - Booking Link & Strategy Button */}
+                  <td className="px-6 py-5 align-middle" style={{ width: '140px', minWidth: '140px' }}>
+                    <div className="flex flex-col gap-2">
+                      {row.websiteUrl ? (
+                        <a
+                          href={row.websiteUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`hover:underline inline-flex items-center gap-1 text-xs font-medium transition-colors whitespace-nowrap ${
+                            darkMode
+                              ? isLuxTrip ? 'text-[#12d65e] hover:text-[#12d65e]/80' : 'text-white/80 hover:text-white'
+                              : isLuxTrip ? 'text-[#00CD52] hover:text-[#00CD52]/80' : 'text-gray-600 hover:text-gray-800'
+                          }`}
+                        >
+                          <span>{isZh ? '访问网站' : 'Visit Site'}</span>
+                          <ExternalLink className="w-3 h-3 flex-shrink-0" />
+                        </a>
+                      ) : (
+                        <span className={`text-xs ${darkMode ? 'text-white/40' : 'text-gray-400'}`}>{isZh ? '—' : '—'}</span>
+                      )}
+                      {/* Luxtrip 专属预订策略按钮 */}
+                      {isLuxTrip && (hotelId || (checkIn && checkOut)) && onStrategyRequest && (
+                        <button
+                          onClick={() => {
+                            console.log('[EvaluationTable] Strategy button clicked:', { 
+                              hotelId, 
+                              checkIn, 
+                              checkOut, 
+                              platform: row.platform,
+                              isLuxTrip 
+                            });
+                            onStrategyRequest(hotelId || null, checkIn, checkOut);
+                          }}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors whitespace-nowrap ${
+                            darkMode
+                              ? 'bg-[#12d65e]/20 text-[#12d65e] hover:bg-[#12d65e]/30 border border-[#12d65e]/30'
+                              : 'bg-[#00CD52]/10 text-[#00CD52] hover:bg-[#00CD52]/20 border border-[#00CD52]/30'
+                          }`}
+                        >
+                          <SparklesIcon className="w-3 h-3 flex-shrink-0" />
+                          <span>{isZh ? '查看优惠详情' : 'View Details'}</span>
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );
             })}
           </tbody>
         </table>
+          </div>
+          
+          {/* 滚动指示器 - 底部滑动条（当表格可滚动时显示） */}
+          {scrollIndicatorState.show && (
+            <div className="mt-3 px-4">
+              <div className="relative h-1.5 bg-white/5 rounded-full overflow-hidden">
+                <div 
+                  className="absolute top-0 h-full bg-[#12d65e]/60 rounded-full transition-all duration-300"
+                  style={{ 
+                    width: `${scrollIndicatorState.width}%`,
+                    left: `${scrollIndicatorState.left}%`,
+                  }}
+                ></div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Mobile Card Layout - Responsive */}

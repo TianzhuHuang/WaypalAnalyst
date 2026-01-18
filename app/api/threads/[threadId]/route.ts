@@ -19,25 +19,45 @@ export async function GET(
     }
 
     const { threadId } = await params;
+    const isDevelopment = process.env.NODE_ENV !== 'production';
 
-    const thread = await db
-      .select()
-      .from(threads)
-      .where(eq(threads.id, threadId))
-      .limit(1);
+    try {
+      const thread = await db
+        .select()
+        .from(threads)
+        .where(eq(threads.id, threadId))
+        .limit(1);
 
-    if (thread.length === 0) {
-      return NextResponse.json({ error: 'Thread not found' }, { status: 404 });
+      if (thread.length === 0) {
+        return NextResponse.json({ error: 'Thread not found' }, { status: 404 });
+      }
+
+      // 验证所有权
+      if (thread[0].userId !== (session.user.id as string)) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+
+      return NextResponse.json(thread[0]);
+    } catch (error: any) {
+      console.error('Error fetching thread:', error);
+      
+      // 本地环境：数据库连接失败时返回 404（假装不存在）
+      if (isDevelopment) {
+        console.warn('[API] GET /api/threads/[threadId]: Database error in development, returning 404');
+        return NextResponse.json({ error: 'Thread not found' }, { status: 404 });
+      }
+      
+      throw error;
     }
-
-    // 验证所有权
-    if (thread[0].userId !== (session.user.id as string)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    return NextResponse.json(thread[0]);
   } catch (error: any) {
     console.error('Error fetching thread:', error);
+    const isDevelopment = process.env.NODE_ENV !== 'production';
+    
+    // 本地环境：返回 404 而不是 500
+    if (isDevelopment) {
+      return NextResponse.json({ error: 'Thread not found' }, { status: 404 });
+    }
+    
     return NextResponse.json(
       { error: 'Failed to fetch thread', details: error.message },
       { status: 500 }

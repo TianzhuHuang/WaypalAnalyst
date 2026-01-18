@@ -92,6 +92,7 @@ export interface EvaluationData {
   table_rows: EvaluationTableRow[];
   reply_json?: {
     table_rows?: EvaluationTableRow[]; // Prioritized data source
+    hotel_id?: number; // Hotel ID from reply_json
   };
   deep_analysis?: {
     price?: string;
@@ -172,6 +173,7 @@ export interface CompareHotelResponse {
   status: 'buffered' | 'processed';
   reply_type?: 'evaluation' | 'general' | 'clarification' | null;
   reply?: string | null;
+  reply_json?: EvaluationData | null; // 添加 reply_json 字段（已经是解析好的对象）
   aggregated_count?: number;
 }
 
@@ -204,22 +206,24 @@ export async function sendMessageToAgent(
     
     if (context) {
       const contextSummary = buildContextSummary(context);
-      // 根据后端 prompt 格式，构建完整的消息
-      enhancedMessage = `你是 wayPal 的旅行顾问助手。请与用户自然对话，回答要简洁、可执行、尽量一步到位。
-
-重要要求:
-- 不要编造事实，不确定就向用户提问确认。
-- 保持上下文一致，优先参考"对话摘要"与最近消息。
-
-对话摘要(可能为空): (空)
-
-最近对话: (无)
-
-${contextSummary}
-
-用户当前问题：${message}
-
-请直接输出你的回复(纯文本)`;
+      // 直接将上下文信息嵌入到 message_text 中
+      // 后端会处理 prompt，我们只需要提供上下文和用户问题
+      enhancedMessage = `${contextSummary}\n\n用户问题：${message}`;
+      
+      console.log('[AgentAPI] Context-enhanced message:', {
+        hasContext: true,
+        contextSummaryLength: contextSummary.length,
+        originalMessageLength: message.length,
+        enhancedMessageLength: enhancedMessage.length,
+        hotelName: context.hotel_name,
+        hasBestChoice: !!context.best_choice,
+        tableRowsCount: context.table_rows_summary.length,
+      });
+      
+      // 调试：打印上下文摘要的前 500 个字符
+      console.log('[AgentAPI] Context summary preview:', contextSummary.substring(0, 500));
+    } else {
+      console.log('[AgentAPI] No context provided, using original message');
     }
 
     const requestBody = {
@@ -419,6 +423,8 @@ export function parseEvaluationReply(reply: string): EvaluationData {
     const parsed = JSON.parse(reply);
     console.log('[AgentAPI] Parsed successfully:', {
       hotel_name: parsed.hotel_name,
+      hotel_id: parsed.hotel_id,
+      reply_json_hotel_id: parsed.reply_json?.hotel_id,
       table_rows_count: parsed.table_rows?.length,
       reply_json: parsed.reply_json,
     });

@@ -46,6 +46,26 @@ export async function POST(
     const { threadId } = await params;
     console.log('[API] Thread ID:', threadId);
 
+    // 检查本地环境降级处理
+    const isDevelopment = process.env.NODE_ENV !== 'production';
+    const hasDatabaseUrl = !!process.env.DATABASE_URL;
+    
+    // 先读取 request body（只能读取一次）
+    const body = await request.json();
+    const { role, content } = body;
+    
+    // 本地环境如果没有数据库配置，静默返回成功（不保存）
+    if (isDevelopment && !hasDatabaseUrl) {
+      console.warn('[API] POST /api/threads/[threadId]/messages: No DATABASE_URL in development, skipping save');
+      return NextResponse.json({
+        id: `mock-${Date.now()}`,
+        threadId,
+        role: role || 'user',
+        content: content || '',
+        createdAt: new Date().toISOString(),
+      });
+    }
+
     // 验证 Thread 属于当前用户
     let thread;
     try {
@@ -61,6 +81,19 @@ export async function POST(
         stack: dbError.stack,
         hasDbUrl,
       });
+      
+      // 本地环境：数据库连接失败时，静默返回成功
+      if (isDevelopment) {
+        console.warn('[API] POST /api/threads/[threadId]/messages: Database error in development, skipping save');
+        return NextResponse.json({
+          id: `mock-${Date.now()}`,
+          threadId,
+          role: role || 'user',
+          content: content || '',
+          createdAt: new Date().toISOString(),
+        });
+      }
+      
       throw new Error(`Database connection failed: ${dbError.message}`);
     }
 
@@ -83,8 +116,7 @@ export async function POST(
       );
     }
 
-    const body = await request.json();
-    const { role, content } = body;
+    // body 已在上面读取
     console.log('[API] Message data:', {
       role,
       contentLength: content?.length || 0,
@@ -128,6 +160,19 @@ export async function POST(
         role,
         contentLength: content?.length,
       });
+      
+      // 本地环境：数据库保存失败时，返回 mock 消息
+      if (isDevelopment) {
+        console.warn('[API] POST /api/threads/[threadId]/messages: Database save failed in development, returning mock message');
+        return NextResponse.json({
+          id: `mock-${Date.now()}`,
+          threadId,
+          role: role as 'user' | 'assistant' | 'system',
+          content,
+          createdAt: new Date().toISOString(),
+        });
+      }
+      
       throw new Error(`Failed to save message to database: ${dbError.message}`);
     }
 
@@ -154,6 +199,22 @@ export async function POST(
       name: error.name,
       hasDbUrl: !!process.env.DATABASE_URL,
     });
+    
+    // 本地环境：即使 catch 到错误，也返回 mock 消息
+    const isDevelopment = process.env.NODE_ENV !== 'production';
+    if (isDevelopment) {
+      console.warn('[API] POST /api/threads/[threadId]/messages: Error in development, returning mock message');
+      // 注意：这里无法再次读取 body，因为已经在上面读取过了
+      // 返回一个通用的 mock 消息
+      return NextResponse.json({
+        id: `mock-${Date.now()}`,
+        threadId: (await params).threadId,
+        role: 'user',
+        content: 'Message saved (mock - database unavailable)',
+        createdAt: new Date().toISOString(),
+      });
+    }
+    
     return NextResponse.json(
       { 
         error: 'Failed to save message', 
@@ -177,31 +238,58 @@ export async function GET(
     }
 
     const { threadId } = await params;
-
-    // 验证 Thread 属于当前用户
-    const thread = await db
-      .select()
-      .from(threads)
-      .where(eq(threads.id, threadId))
-      .limit(1);
-
-    if (thread.length === 0) {
-      return NextResponse.json({ error: 'Thread not found' }, { status: 404 });
+    const isDevelopment = process.env.NODE_ENV !== 'production';
+    const hasDatabaseUrl = !!process.env.DATABASE_URL;
+    
+    // 本地环境如果没有数据库配置，返回空数组
+    if (isDevelopment && !hasDatabaseUrl) {
+      console.warn('[API] GET /api/threads/[threadId]/messages: No DATABASE_URL in development, returning empty array');
+      return NextResponse.json([]);
     }
 
-    if (thread[0].userId !== (session.user.id as string)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    try {
+      // 验证 Thread 属于当前用户
+      const thread = await db
+        .select()
+        .from(threads)
+        .where(eq(threads.id, threadId))
+        .limit(1);
+
+      if (thread.length === 0) {
+        return NextResponse.json({ error: 'Thread not found' }, { status: 404 });
+      }
+
+      if (thread[0].userId !== (session.user.id as string)) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      }
+
+      const threadMessages = await db
+        .select()
+        .from(messages)
+        .where(eq(messages.threadId, threadId))
+        .orderBy(messages.createdAt);
+
+      return NextResponse.json(threadMessages);
+    } catch (error: any) {
+      console.error('Error fetching messages:', error);
+      
+      // 本地环境：数据库查询失败时，返回空数组
+      if (isDevelopment) {
+        console.warn('[API] GET /api/threads/[threadId]/messages: Database error in development, returning empty array');
+        return NextResponse.json([]);
+      }
+      
+      throw error;
     }
-
-    const threadMessages = await db
-      .select()
-      .from(messages)
-      .where(eq(messages.threadId, threadId))
-      .orderBy(messages.createdAt);
-
-    return NextResponse.json(threadMessages);
   } catch (error: any) {
     console.error('Error fetching messages:', error);
+    
+    // 本地环境：即使 catch 到错误，也返回空数组
+    const isDevelopment = process.env.NODE_ENV !== 'production';
+    if (isDevelopment) {
+      return NextResponse.json([]);
+    }
+    
     return NextResponse.json(
       { error: 'Failed to fetch messages', details: error.message },
       { status: 500 }

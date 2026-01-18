@@ -183,27 +183,25 @@ export async function POST(request: NextRequest) {
 // 获取用户的 Thread 列表
 export async function GET(request: NextRequest) {
   try {
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/1c36209a-603e-4d99-af36-1961247a84af',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/threads/route.ts:184',message:'GET /api/threads entry',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
     const session = await auth();
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/1c36209a-603e-4d99-af36-1961247a84af',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/threads/route.ts:187',message:'GET /api/threads: Session obtained',data:{hasSession:!!session,hasUserId:!!session?.user?.id,userId:session?.user?.id||'none',userEmail:session?.user?.email?.substring(0,10)||'none'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
     
     if (!session?.user) {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/1c36209a-603e-4d99-af36-1961247a84af',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/threads/route.ts:191',message:'GET /api/threads: No session',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // 如果 session.user.id 不存在或看起来像 Google OAuth ID，尝试从数据库查询真实用户 ID
+    // 检查数据库连接（本地环境降级处理）
+    const isDevelopment = process.env.NODE_ENV !== 'production';
+    const hasDatabaseUrl = !!process.env.DATABASE_URL;
+    
+    // 本地环境如果没有数据库配置，返回空数组
+    if (isDevelopment && !hasDatabaseUrl) {
+      console.warn('[API] GET /api/threads: No DATABASE_URL in development, returning empty array');
+      return NextResponse.json([]);
+    }
+
+    // 如果 session.user.id 不存在，尝试从数据库查询真实用户 ID
     let userId = session.user.id;
     if (!userId && session.user.email) {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/1c36209a-603e-4d99-af36-1961247a84af',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/threads/route.ts:198',message:'GET /api/threads: userId missing, querying DB',data:{email:session.user.email?.substring(0,10)||'none'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
       try {
         const user = await db
           .select()
@@ -213,56 +211,67 @@ export async function GET(request: NextRequest) {
         
         if (user.length > 0) {
           userId = user[0].id;
-          // #region agent log
-          fetch('http://127.0.0.1:7243/ingest/1c36209a-603e-4d99-af36-1961247a84af',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/threads/route.ts:207',message:'GET /api/threads: Real userId fetched from DB',data:{userId:user[0].id,userIdType:typeof user[0].id},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-          // #endregion
         }
       } catch (error: any) {
-        // #region agent log
-        fetch('http://127.0.0.1:7243/ingest/1c36209a-603e-4d99-af36-1961247a84af',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/threads/route.ts:212',message:'GET /api/threads: DB query error',data:{errorMessage:error.message,errorCode:error.code},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-        // #endregion
         console.error('[API] Error fetching user from DB in GET /api/threads:', error);
+        
+        // 本地环境：如果数据库连接失败，返回空数组而不是错误
+        if (isDevelopment) {
+          console.warn('[API] GET /api/threads: Database connection failed in development, returning empty array');
+          return NextResponse.json([]);
+        }
+        
+        // 生产环境：继续抛出错误
+        throw error;
       }
     }
 
     if (!userId) {
-      // #region agent log
-      fetch('http://127.0.0.1:7243/ingest/1c36209a-603e-4d99-af36-1961247a84af',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/threads/route.ts:218',message:'GET /api/threads: No userId available',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-      // #endregion
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/1c36209a-603e-4d99-af36-1961247a84af',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/threads/route.ts:224',message:'GET /api/threads: Querying threads',data:{userId:userId,userIdType:typeof userId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
 
     // 获取最近7天的 Thread（按 updatedAt 筛选）
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
     sevenDaysAgo.setHours(0, 0, 0, 0);
     
-    const userThreads = await db
-      .select()
-      .from(threads)
-      .where(
-        and(
-          eq(threads.userId, userId),
-          gte(threads.updatedAt, sevenDaysAgo)
+    try {
+      const userThreads = await db
+        .select()
+        .from(threads)
+        .where(
+          and(
+            eq(threads.userId, userId),
+            gte(threads.updatedAt, sevenDaysAgo)
+          )
         )
-      )
-      .orderBy(desc(threads.updatedAt))
-      .limit(50); // 最多 50 条
+        .orderBy(desc(threads.updatedAt))
+        .limit(50); // 最多 50 条
 
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/1c36209a-603e-4d99-af36-1961247a84af',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/threads/route.ts:239',message:'GET /api/threads: Threads fetched',data:{threadCount:userThreads.length,userId:userId},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
-
-    return NextResponse.json(userThreads);
+      return NextResponse.json(userThreads);
+    } catch (error: any) {
+      console.error('[API] Error querying threads from database:', error);
+      
+      // 本地环境：如果数据库查询失败，返回空数组而不是错误
+      if (isDevelopment) {
+        console.warn('[API] GET /api/threads: Database query failed in development, returning empty array');
+        return NextResponse.json([]);
+      }
+      
+      // 生产环境：抛出错误
+      throw error;
+    }
   } catch (error: any) {
     console.error('Error fetching threads:', error);
-    // #region agent log
-    fetch('http://127.0.0.1:7243/ingest/1c36209a-603e-4d99-af36-1961247a84af',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'app/api/threads/route.ts:245',message:'GET /api/threads: Error',data:{errorMessage:error.message,errorStack:error.stack?.substring(0,200)||'none'},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
+    
+    // 本地环境：即使 catch 到错误，也返回空数组
+    const isDevelopment = process.env.NODE_ENV !== 'production';
+    if (isDevelopment) {
+      console.warn('[API] GET /api/threads: Error in development, returning empty array');
+      return NextResponse.json([]);
+    }
+    
+    // 生产环境：返回错误
     return NextResponse.json(
       { error: 'Failed to fetch threads', details: error.message },
       { status: 500 }

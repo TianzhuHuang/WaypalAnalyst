@@ -4,16 +4,18 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import FrogLogoIcon from './FrogLogoIcon';
 import ProfessionalCalendar from './ProfessionalCalendar';
 import OccupancyPicker from './OccupancyPicker';
-import DarkComparisonTable from './DarkComparisonTable';
+import AnalystComparisonCard from './Analyst/EvaluationTable';
+import { convertEvaluationDataToTableRows } from '@/utils/convertEvaluationData';
 import VideoTourList from './VideoTourList';
 import VideoModal from './VideoModal';
 import ProfileSidebar from './ProfileSidebar';
 import Sidebar from './Sidebar';
 import DeepAnalysisButton from './Analyst/DeepAnalysisButton';
 import ExpertAnalysisCard from './Analyst/ExpertAnalysisCard';
-import { compareHotel, sendMessageToAgent, parseEvaluationReply, getBookingStrategy } from '@/api/agentApi';
+import { compareHotel, sendMessageToAgent, parseEvaluationReply, getBookingStrategy, type EvaluationData } from '@/api/agentApi';
 import { useThreadQuery } from '@/hooks/useThreadQuery';
 import { useComparisonContext } from '@/hooks/useComparisonContext';
+import { buildContextFromComparison } from '@/utils/contextBuilder';
 import { useAuth } from '@/hooks/useAuth';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -77,7 +79,121 @@ export default function WaypalApp() {
   const threadQuery = useThreadQuery(currentThreadId);
   
   // 获取比价上下文
-  const { context: comparisonContext, isExpired: isContextExpired } = useComparisonContext(currentThreadId);
+  const { context: comparisonContext, isExpired: isContextExpired, hasContext } = useComparisonContext(currentThreadId);
+  
+  // 处理 Luxtrip 专属预订策略请求
+  const handleStrategyRequest = async (hotelId: number | null, checkIn: string | undefined, checkOut: string | undefined) => {
+    console.log('[WaypalApp] handleStrategyRequest called with:', {
+      hotelId,
+      checkIn,
+      checkOut,
+      startDate,
+      endDate,
+      currentHotelId,
+    });
+
+    // 优先使用传入的日期参数，如果没有则使用 state 中的日期
+    const effectiveCheckIn = checkIn || startDate;
+    const effectiveCheckOut = checkOut || endDate;
+
+    // 检查日期是否有效（日期是必需的）
+    if (!effectiveCheckIn || !effectiveCheckOut) {
+      const errorMessage: Message = {
+        id: `error-${Date.now()}`,
+        role: 'assistant',
+        type: 'text',
+        content: '缺少日期参数，无法获取专属预订方案。请先设置入住和退房日期。',
+        timestamp: Date.now(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+      return;
+    }
+
+    // 检查 hotelId（如果为空，给出提示但继续尝试，因为可能可以从其他方式获取）
+    if (!hotelId) {
+      // 尝试使用 currentHotelId
+      const effectiveHotelId = currentHotelId;
+      
+      if (!effectiveHotelId) {
+        const errorMessage: Message = {
+          id: `error-${Date.now()}`,
+          role: 'assistant',
+          type: 'text',
+          content: '当前缺少酒店ID参数，无法获取专属预订方案。请先进行比价查询，系统会自动获取酒店ID。',
+          timestamp: Date.now(),
+        };
+        setMessages(prev => [...prev, errorMessage]);
+        return;
+      }
+      
+      // 使用 currentHotelId
+      hotelId = effectiveHotelId;
+      console.log('[WaypalApp] Using currentHotelId:', hotelId);
+    }
+
+    setIsLoading(true);
+
+    try {
+      const response = await getBookingStrategy({
+        hotelId,
+        checkIn: effectiveCheckIn,
+        checkOut: effectiveCheckOut,
+      });
+
+      if (response.reply) {
+        const strategyMessage: Message = {
+          id: `strategy-${Date.now()}`,
+          role: 'assistant',
+          type: 'text',
+          content: response.reply, // 富文本内容直接显示
+          timestamp: Date.now(),
+        };
+        setMessages(prev => [...prev, strategyMessage]);
+      } else {
+        const errorMessage: Message = {
+          id: `error-${Date.now()}`,
+          role: 'assistant',
+          type: 'text',
+          content: '未获取到专属预订方案内容。',
+          timestamp: Date.now(),
+        };
+        setMessages(prev => [...prev, errorMessage]);
+      }
+    } catch (err: any) {
+      console.error('[WaypalApp] Failed to load booking strategy:', err);
+      const errorMessage: Message = {
+        id: `error-${Date.now()}`,
+        role: 'assistant',
+        type: 'text',
+        content: err.message || '获取专属预订方案失败，请稍后重试。',
+        timestamp: Date.now(),
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // 如果从 Thread metadata 中没有获取到上下文，尝试从当前消息中获取最新的比价数据
+  const latestComparisonData = useMemo(() => {
+    if (comparisonContext) return comparisonContext;
+    
+    // 从消息列表中查找最新的比价数据
+    const latestComparisonMessage = [...messages]
+      .reverse()
+      .find(msg => msg.type === 'comparison' && msg.comparisonData);
+    
+    if (latestComparisonMessage?.comparisonData) {
+      const context = buildContextFromComparison(latestComparisonMessage.comparisonData);
+      console.log('[WaypalApp] Found comparison context from latest message:', context);
+      return context;
+    }
+    
+    return null;
+  }, [messages, comparisonContext]);
+  
+  // 优先使用 Thread metadata 中的上下文，如果没有则使用消息中的
+  const effectiveContext = comparisonContext || latestComparisonData;
 
   // 处理 Thread 切换 - 从历史记录加载，不重新查价
   const handleSelectThread = async (threadId: string) => {
@@ -201,7 +317,6 @@ export default function WaypalApp() {
   const quickActions = useMemo(() => [
     { label: "全网找优惠", icon: <i className="fa-solid fa-magnifying-glass-dollar"></i>, action: "全网找优惠" },
     { label: "预定方案推荐", icon: <i className="fa-solid fa-calendar-check"></i>, action: "预定方案推荐" },
-    { label: "房型推荐", icon: <i className="fa-solid fa-bed"></i>, action: null }, // 保留按钮但不实现
     { label: "价格趋势", icon: <i className="fa-solid fa-chart-line"></i>, action: null } // 保留按钮但不实现
   ], []);
 
@@ -340,14 +455,22 @@ export default function WaypalApp() {
          await executeSpecialAction("全网找优惠");
          return;
       }
-      if (text.includes("房型") || text.includes("推荐")) {
-         await executeSpecialAction("房型推荐");
-         return;
-      }
       
       // Use the existing API
       const userId = user?.id || "waypal_user_" + Date.now();
-      const res = await sendMessageToAgent(text, userId, comparisonContext);
+      
+      // 调试：检查上下文
+      console.log('[WaypalApp] handleSend - Context check:', {
+        hasContextFromThread: !!comparisonContext,
+        hasContextFromMessages: !!latestComparisonData,
+        effectiveContext: !!effectiveContext,
+        context: effectiveContext,
+        currentThreadId,
+        threadMetadata: threadQuery.thread?.metadata,
+        latestComparisonMessage: messages.find(msg => msg.type === 'comparison'),
+      });
+      
+      const res = await sendMessageToAgent(text, userId, effectiveContext);
       
       if (res.reply_type === 'evaluation' && res.reply) {
         const evaluationData = parseEvaluationReply(res.reply);
@@ -453,7 +576,7 @@ export default function WaypalApp() {
 
   // 深度解析处理函数
   const handleDeepAnalysis = async () => {
-    if (!comparisonContext || !currentThreadId) return;
+    if (!effectiveContext || !currentThreadId) return;
 
     setIsLoading(true);
     try {
@@ -470,7 +593,7 @@ export default function WaypalApp() {
       const response = await sendMessageToAgent(
         analysisPrompt,
         userId,
-        comparisonContext
+        effectiveContext
       );
 
       if (response.reply) {
@@ -536,10 +659,57 @@ export default function WaypalApp() {
 
         if (res.reply_type === 'evaluation' && res.reply) {
           try {
-            const evaluationData = parseEvaluationReply(res.reply);
-            // 尝试从返回数据中获取hotelId（如果存在）
-            if (evaluationData && (evaluationData as any).hotel_id) {
-              setCurrentHotelId((evaluationData as any).hotel_id);
+            // 优先使用 res.reply_json（如果存在），否则解析 res.reply
+            let evaluationData: EvaluationData;
+            
+            if (res.reply_json) {
+              // 直接使用 reply_json（已经是解析好的对象）
+              evaluationData = res.reply_json as EvaluationData;
+              console.log('[WaypalApp] Using reply_json directly from response');
+            } else {
+              // 后备方案：解析 reply 字符串
+              evaluationData = parseEvaluationReply(res.reply);
+              console.log('[WaypalApp] Parsed reply string');
+            }
+            
+            // 从多个位置尝试提取 hotel_id（按优先级排序）
+            let extractedHotelId: number | null = null;
+            
+            // 优先级1: 直接从 res.reply_json.hotel_id 获取（API 返回的原始数据）
+            const replyJsonHotelId = res.reply_json ? (res.reply_json as any).hotel_id : null;
+            if (replyJsonHotelId !== undefined && replyJsonHotelId !== null) {
+              extractedHotelId = typeof replyJsonHotelId === 'number'
+                ? replyJsonHotelId
+                : parseInt(String(replyJsonHotelId));
+              console.log('[WaypalApp] ✓ Extracted hotel_id from res.reply_json.hotel_id:', extractedHotelId);
+            } 
+            // 优先级2: 从 evaluationData.reply_json.hotel_id 获取
+            else if (evaluationData?.reply_json && (evaluationData.reply_json as any).hotel_id) {
+              const replyJsonHotelId = (evaluationData.reply_json as any).hotel_id;
+              extractedHotelId = typeof replyJsonHotelId === 'number'
+                ? replyJsonHotelId
+                : parseInt(String(replyJsonHotelId));
+              console.log('[WaypalApp] ✓ Extracted hotel_id from evaluationData.reply_json.hotel_id:', extractedHotelId);
+            }
+            // 优先级3: 从 evaluationData 顶层获取 hotel_id
+            else if (evaluationData && (evaluationData as any).hotel_id) {
+              extractedHotelId = typeof (evaluationData as any).hotel_id === 'number'
+                ? (evaluationData as any).hotel_id
+                : parseInt(String((evaluationData as any).hotel_id));
+              console.log('[WaypalApp] ✓ Extracted hotel_id from evaluationData top level:', extractedHotelId);
+            }
+            
+            if (extractedHotelId) {
+              setCurrentHotelId(extractedHotelId);
+              console.log('[WaypalApp] ✓ Successfully set currentHotelId to:', extractedHotelId);
+            } else {
+              console.warn('[WaypalApp] ✗ No hotel_id found:', {
+                hasResReplyJson: !!res.reply_json,
+                resReplyJsonHotelId: res.reply_json ? (res.reply_json as any).hotel_id : null,
+                hotel_name: evaluationData?.hotel_name,
+                hasEvaluationDataReplyJson: !!evaluationData?.reply_json,
+                evaluationDataReplyJsonHotelId: evaluationData?.reply_json ? (evaluationData.reply_json as any).hotel_id : null,
+              });
             }
             
             const assistantMessage: Message = {
@@ -630,14 +800,6 @@ export default function WaypalApp() {
             timestamp: Date.now() 
           }]);
         }
-      } else if (action === "房型推荐") {
-        // 保留按钮但不实现功能
-        setMessages(prev => [...prev, { 
-          id: `a-${Date.now()}`, 
-          role: 'assistant', 
-          content: "房型推荐功能即将上线，敬请期待", 
-          timestamp: Date.now() 
-        }]);
       } else if (action === "价格趋势") {
         // 保留按钮但不实现功能
         setMessages(prev => [...prev, { 
@@ -848,25 +1010,57 @@ export default function WaypalApp() {
                       ) : (
                         <div className="whitespace-pre-wrap break-words">{msg.content}</div>
                       )}
-                      {msg.type === 'comparison' && msg.comparisonData && (
-                        <>
-                          <DarkComparisonTable 
-                            data={msg.comparisonData}
-                            onBook={(row) => {
-                              if (row.websiteUrl) {
-                                window.open(row.websiteUrl, '_blank');
-                              }
-                            }}
-                          />
-                          {comparisonContext && (
-                            <DeepAnalysisButton
-                              onAnalyze={handleDeepAnalysis}
-                              isLoading={isLoading}
-                              locale="zh"
-                            />
-                          )}
-                        </>
-                      )}
+                      {msg.type === 'comparison' && msg.comparisonData && (() => {
+                        const evaluationData = msg.comparisonData;
+                        const tableRows = convertEvaluationDataToTableRows(evaluationData, (row) => {
+                          // 判断是否为最佳选择：价格最低或标记为 isBest
+                          return row.isBest || row.is_best || false;
+                        });
+                        
+                        // 按价格排序，最低价格为最佳
+                        const sortedRows = [...tableRows].sort((a, b) => {
+                          const priceA = parseFloat(a.totalPrice.replace(/[¥,]/g, '')) || Infinity;
+                          const priceB = parseFloat(b.totalPrice.replace(/[¥,]/g, '')) || Infinity;
+                          return priceA - priceB;
+                        });
+                        
+                        // 标记第一个为最佳
+                        if (sortedRows.length > 0) {
+                          sortedRows[0].isBest = true;
+                        }
+                        
+                        const displayHotelName = evaluationData.hotel_name_cn || evaluationData.hotel_name || hotelName || '';
+                        const location = displayHotelName; // 使用酒店名称作为位置
+                        const dateRange = evaluationData.checkin_date && evaluationData.checkout_date
+                          ? `${evaluationData.checkin_date} - ${evaluationData.checkout_date}`
+                          : `${startDate} - ${endDate}`;
+                        
+                        return (
+                          <>
+                            <div className="mt-6 px-4 md:px-6">
+                              <AnalystComparisonCard
+                                hotelName={displayHotelName}
+                                location={location}
+                                dateRange={dateRange}
+                                rows={sortedRows}
+                                locale="zh"
+                                darkMode={true}
+                                hotelId={currentHotelId}
+                                checkIn={evaluationData.checkin_date || startDate}
+                                checkOut={evaluationData.checkout_date || endDate}
+                                onStrategyRequest={handleStrategyRequest}
+                              />
+                            </div>
+                            {effectiveContext && (
+                              <DeepAnalysisButton
+                                onAnalyze={handleDeepAnalysis}
+                                isLoading={isLoading}
+                                locale="zh"
+                              />
+                            )}
+                          </>
+                        );
+                      })()}
                       {msg.type === 'room-tour' && <VideoTourList videos={msg.roomTourVideos || []} onPlay={(id) => setPlayingVideoId(id)} />}
                     </div>
                   </div>
